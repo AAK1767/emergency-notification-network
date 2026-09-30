@@ -57,7 +57,7 @@ TYPE|SEQ|PRIORITY|TIMESTAMP|PAYLOAD
 ## Software Requirements
 
 - Ubuntu 20.04+ (or Mininet-compatible Linux)
-- Python 3.8+
+- Python 3.8-3.11 (Ryu is supported on Python 3.11)
 - Mininet 2.3+
 - Open vSwitch 2.13+
 - Ryu SDN Framework 4.34+
@@ -95,7 +95,7 @@ user. Then run the following in the Ubuntu (WSL) terminal:
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-venv \
+sudo apt install -y git python3.11 python3.11-venv python3-pip \
     mininet openvswitch-switch iperf3
 
 # Start Open vSwitch for the current WSL session
@@ -109,8 +109,9 @@ example:
 cd ~
 git clone https://github.com/<your-user>/emergency-notification-network.git
 cd emergency-notification-network
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
+python --version  # should report Python 3.11.x
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
