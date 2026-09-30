@@ -1,0 +1,47 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 9999,
+    "admin_port": 9998
+  },
+  "client": {
+    "server_ip": "10.0.0.1",
+    "server_port": 9999,
+    "default_listen_port": 9001
+  },
+  "protocol": {
+    "delimiter": "|",
+    "emergency_port": 9999,
+    "normal_port": 8888,
+    "ack_timeout_ms": 300,
+    "max_retries": 3,
+    "heartbeat_interval_s": 5,
+    "heartbeat_timeout_s": 15
+  },
+  "controller": {
+    "ip": "127.0.0.1",
+    "rest_port": 8080,
+    "openflow_port": 6653,
+    "stats_poll_interval_s": 2,
+    "congestion_threshold_percent": 70,
+    "emergency_queue_id": 1,
+    "default_queue_id": 0
+  },
+  "topology": {
+    "server_ip": "10.0.0.1",
+    "admin_ip": "10.0.0.100",
+    "subscribers": {
+      "hC1": "10.0.0.2",
+      "hC2": "10.0.0.3",
+      "hC3": "10.0.0.4"
+    },
+    "noise_hosts": {
+      "hNoise1": "10.0.0.11",
+      "hNoise2": "10.0.0.12"
+    }
+  },
+  "experiments": {
+    "experiment_duration_s": 30,
+    "results_dir": "results"
+  }
+}
