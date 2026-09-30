@@ -79,42 +79,134 @@ sudo apt-get install mininet openvswitch-switch
 
 ## Using WSL 2
 
-Mininet and Open vSwitch must run inside a Linux environment. On Windows, use
-WSL 2 with Ubuntu rather than running the commands from PowerShell.
+Mininet and Open vSwitch must run inside a Linux environment. On Windows, use **WSL 2 with Ubuntu** rather than running the commands from PowerShell.
 
 ### 1. Install and prepare WSL
 
-Run this once from an Administrator PowerShell:
+Run this once from an **Administrator PowerShell**:
 
 ```powershell
 wsl --install -d Ubuntu
 ```
 
-Restart Windows if prompted, open the Ubuntu application, and create your Linux
-user. Then run the following in the Ubuntu (WSL) terminal:
+Restart Windows if prompted, open the Ubuntu application, and create your Linux user.
+
+Then run the following in the **Ubuntu (WSL) terminal**:
 
 ```bash
 sudo apt update
-sudo apt install -y git python3.11 python3.11-venv python3-pip \
+
+sudo apt install -y git curl \
     mininet openvswitch-switch iperf3
+
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Make uv available in the current shell
+export PATH="$HOME/.local/bin:$PATH"
+
+# Install a managed Python 3.11 interpreter
+uv python install 3.11
 
 # Start Open vSwitch for the current WSL session
 sudo service openvswitch-switch start
 ```
 
-Keep the repository in the Linux filesystem for better Mininet performance. For
-example:
+### 2. Clone the repository
+
+For better Mininet performance, keep the repository in the **Linux filesystem** rather than under `/mnt/c`.
+
+For example:
 
 ```bash
 cd ~
+
 git clone https://github.com/<your-user>/emergency-notification-network.git
+
 cd emergency-notification-network
-python3.11 -m venv .venv
-source .venv/bin/activate
-python --version  # should report Python 3.11.x
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
 ```
+
+### 3. Create the Python environment
+
+Ryu 4.34 is an older SDN controller and is not compatible with the latest Python packaging tools. This project therefore uses **Python 3.11** with pinned packaging versions.
+
+Create the virtual environment:
+
+```bash
+uv venv --seed --python 3.11 .venv
+
+source .venv/bin/activate
+```
+
+Verify the Python version:
+
+```bash
+python --version
+```
+
+It should report:
+
+```text
+Python 3.11.x
+```
+
+### 4. Install Ryu
+
+Install the packaging versions required to build Ryu 4.34:
+
+```bash
+python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel
+```
+
+Install Ryu without pip's isolated build environment:
+
+```bash
+python -m pip install --no-build-isolation ryu==4.34
+```
+
+Verify the installation:
+
+```bash
+python -c "import ryu; print('Ryu OK:', ryu.__version__)"
+```
+
+The expected output is:
+
+```text
+Ryu OK: 4.34
+```
+
+### 5. Install the remaining project dependencies
+
+Once Ryu has been installed successfully:
+
+```bash
+python -m pip install -r requirements.txt --no-build-isolation
+```
+
+### 6. Verify the environment
+
+Run:
+
+```bash
+python --version
+python -c "import ryu; print('Ryu import OK')"
+python -m pip show ryu
+```
+
+You should see output similar to:
+
+```text
+Python 3.11.x
+Ryu OK: 4.34
+```
+
+> **Important:** Do not recreate the virtual environment with Python 3.14. Ryu 4.34 relies on older packaging APIs and can fail to build with modern Python/setuptools environments.
+
+
+The `uv python install 3.11` command is required even when the system provides
+a different Python version, such as Python 3.14. Do not replace `3.11` with
+the system `python3` command.
 
 If the Open vSwitch service is not running after restarting WSL, run
 `sudo service openvswitch-switch start` again before starting the topology.
