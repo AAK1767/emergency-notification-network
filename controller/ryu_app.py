@@ -180,21 +180,6 @@ class EmergencyController(app_manager.RyuApp):
     # Port statistics
     # ──────────────────────────────────────────────────────────────────────
 
-    def _stats_poller(self):
-        while True:
-            for dp in list(self.mac_to_port.keys()):
-                try:
-                    self._request_port_stats(dp)
-                except Exception:
-                    pass
-            hub.sleep(self.stats_interval)
-
-    def _request_port_stats(self, dpid):
-        # We need the datapath object; retrieve from topology
-        # The mac_to_port only stores dpid keys after handshake;
-        # we cache datapaths in switch_features
-        pass  # Implemented in EventOFPPortStatsReply handler below
-
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, ev):
         dp = ev.msg.datapath
@@ -254,15 +239,15 @@ class EmergencyController(app_manager.RyuApp):
 
     _datapaths = {}
 
-    @set_ev_cls(ofp_event.EventOFPStateChange)
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, ofp_event.DEAD_DISPATCHER])
     def state_change_handler(self, ev):
         dp = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             self._datapaths[dp.id] = dp
-        elif ev.state == 'dead':
+        elif ev.state == ofp_event.DEAD_DISPATCHER:
             self._datapaths.pop(dp.id, None)
 
-    def _stats_poller(self):  # noqa: F811  (redefinition is intentional)
+    def _stats_poller(self):
         while True:
             for dpid, dp in list(self._datapaths.items()):
                 parser = dp.ofproto_parser
