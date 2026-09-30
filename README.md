@@ -77,6 +77,95 @@ pip3 install -r requirements.txt
 sudo apt-get install mininet openvswitch-switch
 ```
 
+## Using WSL 2
+
+Mininet and Open vSwitch must run inside a Linux environment. On Windows, use
+WSL 2 with Ubuntu rather than running the commands from PowerShell.
+
+### 1. Install and prepare WSL
+
+Run this once from an Administrator PowerShell:
+
+```powershell
+wsl --install -d Ubuntu
+```
+
+Restart Windows if prompted, open the Ubuntu application, and create your Linux
+user. Then run the following in the Ubuntu (WSL) terminal:
+
+```bash
+sudo apt update
+sudo apt install -y git python3 python3-pip python3-venv \
+    mininet openvswitch-switch iperf3
+
+# Start Open vSwitch for the current WSL session
+sudo service openvswitch-switch start
+```
+
+Keep the repository in the Linux filesystem for better Mininet performance. For
+example:
+
+```bash
+cd ~
+git clone https://github.com/<your-user>/emergency-notification-network.git
+cd emergency-notification-network
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+If the Open vSwitch service is not running after restarting WSL, run
+`sudo service openvswitch-switch start` again before starting the topology.
+
+### 2. Run the demo
+
+Use two WSL terminals. In both terminals, change to the repository directory
+and activate the virtual environment:
+
+```bash
+cd ~/emergency-notification-network
+source .venv/bin/activate
+```
+
+In terminal 1, start the controller:
+
+```bash
+ryu-manager controller/ryu_app.py --observe-links --verbose
+```
+
+In terminal 2, start the topology:
+
+```bash
+sudo service openvswitch-switch start
+sudo .venv/bin/python topology/topo.py
+```
+
+When the `mininet>` prompt appears, start the server and subscribers. Use the
+absolute virtual-environment path because processes launched by Mininet do not
+inherit the shell's activated environment:
+
+```text
+mininet> hServer /home/<user>/emergency-notification-network/.venv/bin/python server/server.py &
+mininet> hC1 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C1 --server 10.0.0.1 --port 9999 &
+mininet> hC2 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C2 --server 10.0.0.1 --port 9999 &
+mininet> hC3 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C3 --server 10.0.0.1 --port 9999 &
+```
+
+Replace `/home/<user>/emergency-notification-network` with the output of
+`pwd` from the repository root. Send an alert with:
+
+```text
+mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
+```
+
+Exit Mininet with `exit`. Stop the controller with `Ctrl+C` in terminal 1.
+Run local tests from the activated WSL environment with:
+
+```bash
+python -m pytest tests/ -v
+```
+
 ## Repository Structure
 
 ```
