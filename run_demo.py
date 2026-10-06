@@ -46,7 +46,7 @@ def run_demo(use_tc=True):
     net = Mininet(
         topo=topo,
         controller=RemoteController("c0", ip="127.0.0.1", port=6653),
-        switch=partial(OVSSwitch, stp=True),
+        switch=partial(OVSSwitch, stp=True, failMode="standalone"),
         link=TCLink if use_tc else Link,
         autoSetMacs=True,
     )

@@ -130,7 +130,7 @@ def main():
             ip=ctrl_cfg.get("ip", "127.0.0.1"),
             port=ctrl_cfg.get("openflow_port", 6653),
         ),
-        switch=partial(OVSSwitch, stp=True),
+        switch=partial(OVSSwitch, stp=True, failMode="standalone"),
         link=Link if args.no_tc else TCLink,
         autoSetMacs=True,
     )
