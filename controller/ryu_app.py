@@ -9,7 +9,7 @@ Features (D1):
   - REST API endpoint for application events
 
 Run with:
-    ryu-manager controller/ryu_app.py --observe-links
+    python controller/run_ryu.py controller/ryu_app.py --observe-links
 """
 
 import json
@@ -20,7 +20,12 @@ from collections import defaultdict
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
-from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
+from ryu.controller.handler import (
+    CONFIG_DISPATCHER,
+    DEAD_DISPATCHER,
+    MAIN_DISPATCHER,
+    set_ev_cls,
+)
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, udp, arp
 from ryu.lib import hub
@@ -239,12 +244,12 @@ class EmergencyController(app_manager.RyuApp):
 
     _datapaths = {}
 
-    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, ofp_event.DEAD_DISPATCHER])
+    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def state_change_handler(self, ev):
         dp = ev.datapath
         if ev.state == MAIN_DISPATCHER:
             self._datapaths[dp.id] = dp
-        elif ev.state == ofp_event.DEAD_DISPATCHER:
+        elif ev.state == DEAD_DISPATCHER:
             self._datapaths.pop(dp.id, None)
 
     def _stats_poller(self):

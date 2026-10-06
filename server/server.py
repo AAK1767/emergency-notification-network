@@ -92,6 +92,10 @@ class EmergencyServer:
             
         elif msg.msg_type == protocol.MSG_HEARTBEAT:
             self.sub_mgr.update_heartbeat(sub_id, receive_ts)
+
+        elif msg.msg_type == protocol.MSG_ALERT:
+            subscribers = self.sub_mgr.get_all()
+            self.alert_mgr.broadcast_alert(msg.payload, subscribers, msg.priority)
             
         else:
             logger.warn("SERVER", f"Unexpected message type from {sub_id} ({ip}:{port}): {msg.msg_type}")

@@ -158,6 +158,14 @@ Install the packaging versions required to build Ryu 4.34:
 python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel
 ```
 
+Ryu 4.34 imports an Eventlet sentinel that newer releases removed. This
+project uses Python 3.11-compatible Eventlet 0.33.3 and a small launcher shim
+for that Ryu compatibility issue:
+
+```bash
+python -m pip install "eventlet==0.33.3"
+```
+
 Install Ryu without pip's isolated build environment:
 
 ```bash
@@ -166,14 +174,19 @@ python -m pip install --no-build-isolation ryu==4.34
 
 Verify the installation:
 
+Ryu 4.34 does not expose `__version__`, so verify the import and installed
+package version separately:
+
 ```bash
-python -c "import ryu; print('Ryu OK:', ryu.__version__)"
+python -c "import ryu; print('Ryu import OK')"
+python -m pip show ryu | grep '^Version:'
 ```
 
-The expected output is:
+The expected output includes:
 
 ```text
-Ryu OK: 4.34
+Ryu import OK
+Version: 4.34
 ```
 
 ### 5. Install the remaining project dependencies
@@ -198,7 +211,7 @@ You should see output similar to:
 
 ```text
 Python 3.11.x
-Ryu OK: 4.34
+Ryu import OK
 ```
 
 > **Important:** Do not recreate the virtual environment with Python 3.14. Ryu 4.34 relies on older packaging APIs and can fail to build with modern Python/setuptools environments.
@@ -211,7 +224,7 @@ the system `python3` command.
 If the Open vSwitch service is not running after restarting WSL, run
 `sudo service openvswitch-switch start` again before starting the topology.
 
-### 2. Run the demo
+### 7. Run the demo
 
 Use two WSL terminals. In both terminals, change to the repository directory
 and activate the virtual environment:
@@ -224,14 +237,14 @@ source .venv/bin/activate
 In terminal 1, start the controller:
 
 ```bash
-ryu-manager controller/ryu_app.py --observe-links --verbose
+python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
 In terminal 2, start the topology:
 
 ```bash
 sudo service openvswitch-switch start
-sudo .venv/bin/python topology/topo.py
+sudo python3 topology/topo.py
 ```
 
 When the `mininet>` prompt appears, start the server and subscribers. Use the
@@ -276,6 +289,7 @@ python -m pytest tests/ -v
 ├── client/
 │   └── client.py            # Subscriber client
 ├── controller/
+│   ├── run_ryu.py           # Python 3.11-compatible Ryu launcher
 │   └── ryu_app.py           # Ryu SDN controller application
 ├── topology/
 │   └── topo.py              # Mininet topology definition
@@ -294,7 +308,7 @@ python -m pytest tests/ -v
 ### Step 1 — Start the Ryu Controller
 
 ```bash
-ryu-manager controller/ryu_app.py --observe-links --verbose
+python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
 ### Step 2 — Start the Mininet Topology
