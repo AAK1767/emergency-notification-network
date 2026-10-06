@@ -244,8 +244,13 @@ In terminal 2, start the topology:
 
 ```bash
 sudo service openvswitch-switch start
-sudo python3 topology/topo.py
+sudo mn -c
+sudo python3 topology/topo.py --no-tc
 ```
+
+The `--no-tc` option is required on WSL kernels that do not provide the Linux
+traffic-control qdiscs used by `TCLink`. It keeps the topology and OpenFlow
+demo functional, but does not emulate the configured bandwidth or delay.
 
 When the `mininet>` prompt appears, start the server and subscribers. Use the
 absolute virtual-environment path because processes launched by Mininet do not

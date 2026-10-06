@@ -23,17 +23,19 @@ Usage:
             --link tc
     or:
     sudo python3 topology/topo.py
+    sudo python3 topology/topo.py --no-tc  # WSL kernels without traffic control
 """
 
 import sys
 import os
 import time
 import json
+import argparse
 
 from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.node import RemoteController, OVSSwitch
-from mininet.link import TCLink
+from mininet.link import Link, TCLink
 from mininet.log import setLogLevel
 from mininet.cli import CLI
 
@@ -52,7 +54,7 @@ class EmergencyTopo(Topo):
     congestion and latency effects observable.
     """
 
-    def build(self, bw=10, delay="5ms"):
+    def build(self, bw=10, delay="5ms", use_tc=True):
         """
         bw    : link bandwidth in Mbps
         delay : one-way propagation delay string (e.g. '5ms')
@@ -73,7 +75,7 @@ class EmergencyTopo(Topo):
         hNoise1 = self.addHost("hNoise1", ip="10.0.0.11/24")
         hNoise2 = self.addHost("hNoise2", ip="10.0.0.12/24")
 
-        link_opts = dict(bw=bw, delay=delay, use_htb=True)
+        link_opts = dict(bw=bw, delay=delay, use_htb=True) if use_tc else {}
 
         # ── Core links ────────────────────────────────────────────────────
         # Path A: s1 -> s2 -> s4
@@ -86,8 +88,6 @@ class EmergencyTopo(Topo):
 
         # ── Host links ────────────────────────────────────────────────────
         self.addLink(hServer, s1, **link_opts)
-        self.addLink(hAdmin,  s1, **link_opts)
-
         self.addLink(hC1,     s4, **link_opts)
         self.addLink(hC2,     s4, **link_opts)
         self.addLink(hC3,     s3, **link_opts)
@@ -103,11 +103,19 @@ topos = {"emergencytopo": EmergencyTopo}
 # ─── Standalone runner ───────────────────────────────────────────────────────
 
 def main():
+    parser = argparse.ArgumentParser(description="Run the Emergency Mininet topology")
+    parser.add_argument(
+        "--no-tc",
+        action="store_true",
+        help="Use plain links without bandwidth/delay qdiscs (for WSL kernels)",
+    )
+    args = parser.parse_args()
+
     setLogLevel("info")
     cfg = load_config()
     ctrl_cfg = cfg.get("controller", {})
 
-    topo = EmergencyTopo(bw=10, delay="5ms")
+    topo = EmergencyTopo(bw=10, delay="5ms", use_tc=not args.no_tc)
     net = Mininet(
         topo=topo,
         controller=RemoteController(
@@ -116,7 +124,7 @@ def main():
             port=ctrl_cfg.get("openflow_port", 6653),
         ),
         switch=OVSSwitch,
-        link=TCLink,
+        link=Link if args.no_tc else TCLink,
         autoSetMacs=True,
     )
     net.start()
