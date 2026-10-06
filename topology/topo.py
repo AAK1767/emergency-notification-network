@@ -88,6 +88,7 @@ class EmergencyTopo(Topo):
 
         # ── Host links ────────────────────────────────────────────────────
         self.addLink(hServer, s1, **link_opts)
+        self.addLink(hAdmin,  s1, **link_opts)
         self.addLink(hC1,     s4, **link_opts)
         self.addLink(hC2,     s4, **link_opts)
         self.addLink(hC3,     s3, **link_opts)
