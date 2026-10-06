@@ -93,9 +93,10 @@ class EmergencyController(app_manager.RyuApp):
 
         LOG.info("[SDN] Switch s%s connected (dpid=%s)", dp.id, dp.id)
 
-        # Default table-miss: send to controller
+        # Let OVS handle ordinary L2/ARP traffic locally. Emergency UDP traffic
+        # matches the higher-priority rule below and is sent to the controller.
         match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(ofp.OFPP_CONTROLLER, ofp.OFPCML_NO_BUFFER)]
+        actions = [parser.OFPActionOutput(ofp.OFPP_NORMAL)]
         self._add_flow(dp, 0, match, actions, table_id=0)
 
         # Emergency UDP flow — high priority

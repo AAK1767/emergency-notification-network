@@ -251,6 +251,8 @@ sudo python3 topology/topo.py --no-tc
 The `--no-tc` option is required on WSL kernels that do not provide the Linux
 traffic-control qdiscs used by `TCLink`. It keeps the topology and OpenFlow
 demo functional, but does not emulate the configured bandwidth or delay.
+The topology opens the Mininet CLI without running a long automatic ping test;
+run `pingall` manually at the prompt when you want to check connectivity.
 
 When the `mininet>` prompt appears, start the server and subscribers. Use the
 absolute virtual-environment path because processes launched by Mininet do not

@@ -61,10 +61,10 @@ class EmergencyTopo(Topo):
         """
 
         # ── Switches ─────────────────────────────────────────────────────
-        s1 = self.addSwitch("s1", protocols="OpenFlow13")
-        s2 = self.addSwitch("s2", protocols="OpenFlow13")
-        s3 = self.addSwitch("s3", protocols="OpenFlow13")
-        s4 = self.addSwitch("s4", protocols="OpenFlow13")
+        s1 = self.addSwitch("s1", protocols="OpenFlow13", stp=True)
+        s2 = self.addSwitch("s2", protocols="OpenFlow13", stp=True)
+        s3 = self.addSwitch("s3", protocols="OpenFlow13", stp=True)
+        s4 = self.addSwitch("s4", protocols="OpenFlow13", stp=True)
 
         # ── Hosts ─────────────────────────────────────────────────────────
         hServer = self.addHost("hServer", ip="10.0.0.1/24")
@@ -110,6 +110,11 @@ def main():
         action="store_true",
         help="Use plain links without bandwidth/delay qdiscs (for WSL kernels)",
     )
+    parser.add_argument(
+        "--pingall",
+        action="store_true",
+        help="Run Mininet pingall before opening the CLI",
+    )
     args = parser.parse_args()
 
     setLogLevel("info")
@@ -139,11 +144,19 @@ def main():
     print("hNoise1 : 10.0.0.11")
     print("hNoise2 : 10.0.0.12")
     print("======================================================\n")
-    print("Run pingall to verify connectivity.")
+    print("Run 'pingall' at the Mininet prompt to verify connectivity.")
     print("Type 'exit' or Ctrl-D to stop.\n")
 
-    print("== Running pingall ==")
-    net.pingAll()
+    print("== Waiting for controller connections ==")
+    if not net.waitConnected(timeout=10):
+        print("WARNING: One or more switches are not connected to the controller.")
+    time.sleep(2)
+
+    if args.pingall:
+        print("== Running pingall ==")
+        net.pingAll()
+    else:
+        print("== Skipping automatic pingall; CLI is ready ==")
 
     CLI(net)
     net.stop()
