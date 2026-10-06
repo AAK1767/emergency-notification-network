@@ -31,6 +31,7 @@ import os
 import time
 import json
 import argparse
+from functools import partial
 
 from mininet.topo import Topo
 from mininet.net import Mininet
@@ -129,7 +130,7 @@ def main():
             ip=ctrl_cfg.get("ip", "127.0.0.1"),
             port=ctrl_cfg.get("openflow_port", 6653),
         ),
-        switch=OVSSwitch,
+        switch=partial(OVSSwitch, stp=True),
         link=Link if args.no_tc else TCLink,
         autoSetMacs=True,
     )
