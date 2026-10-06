@@ -133,204 +133,61 @@ mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python ser
 
 ## Using WSL 2
 
-Mininet and Open vSwitch must run inside a Linux environment. On Windows, use **WSL 2 with Ubuntu** rather than running the commands from PowerShell.
+WSL uses the same Python setup as native Ubuntu. The only WSL-specific change
+is `--no-tc`, because WSL kernels may not support Mininet traffic-control
+qdiscs.
 
-### 1. Install and prepare WSL
-
-Run this once from an **Administrator PowerShell**:
+If WSL is not installed, run this once from Administrator PowerShell:
 
 ```powershell
 wsl --install -d Ubuntu
 ```
 
-Restart Windows if prompted, open the Ubuntu application, and create your Linux user.
-
-Then run the following in the **Ubuntu (WSL) terminal**:
+Then run this in Ubuntu:
 
 ```bash
 sudo apt update
+sudo apt install -y git curl mininet openvswitch-switch iperf3
 
-sudo apt install -y git curl \
-    mininet openvswitch-switch iperf3
-
-# Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Make uv available in the current shell
 export PATH="$HOME/.local/bin:$PATH"
-
-# Install a managed Python 3.11 interpreter
 uv python install 3.11
 
-# Start Open vSwitch for the current WSL session
+git clone https://github.com/<your-user>/emergency-notification-network.git
+cd emergency-notification-network
+
+uv venv --seed --python 3.11 .venv
+source .venv/bin/activate
+python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python -m pip install --no-build-isolation -r requirements.txt
 sudo service openvswitch-switch start
 ```
 
-### 2. Clone the repository
-
-For better Mininet performance, keep the repository in the **Linux filesystem** rather than under `/mnt/c`.
-
-For example:
-
-```bash
-cd ~
-
-git clone https://github.com/<your-user>/emergency-notification-network.git
-
-cd emergency-notification-network
-```
-
-### 3. Create the Python environment
-
-Ryu 4.34 is an older SDN controller and is not compatible with the latest Python packaging tools. This project therefore uses **Python 3.11** with pinned packaging versions.
-
-Create the virtual environment:
-
-```bash
-uv venv --seed --python 3.11 .venv
-
-source .venv/bin/activate
-```
-
-Verify the Python version:
-
-```bash
-python --version
-```
-
-It should report:
-
-```text
-Python 3.11.x
-```
-
-### 4. Install Ryu
-
-Install the packaging versions required to build Ryu 4.34:
-
-```bash
-python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel
-```
-
-Ryu 4.34 imports an Eventlet sentinel that newer releases removed. This
-project uses Python 3.11-compatible Eventlet 0.33.3 and a small launcher shim
-for that Ryu compatibility issue:
-
-```bash
-python -m pip install "eventlet==0.33.3"
-```
-
-Install Ryu without pip's isolated build environment:
-
-```bash
-python -m pip install --no-build-isolation ryu==4.34
-```
-
-Verify the installation:
-
-Ryu 4.34 does not expose `__version__`, so verify the import and installed
-package version separately:
-
-```bash
-python -c "import ryu; print('Ryu import OK')"
-python -m pip show ryu | grep '^Version:'
-```
-
-The expected output includes:
-
-```text
-Ryu import OK
-Version: 4.34
-```
-
-### 5. Install the remaining project dependencies
-
-Once Ryu has been installed successfully:
-
-```bash
-python -m pip install -r requirements.txt --no-build-isolation
-```
-
-### 6. Verify the environment
-
-Run:
-
-```bash
-python --version
-python -c "import ryu; print('Ryu import OK')"
-python -m pip show ryu
-```
-
-You should see output similar to:
-
-```text
-Python 3.11.x
-Ryu import OK
-```
-
-> **Important:** Do not recreate the virtual environment with Python 3.14. Ryu 4.34 relies on older packaging APIs and can fail to build with modern Python/setuptools environments.
-
-
-The `uv python install 3.11` command is required even when the system provides
-a different Python version, such as Python 3.14. Do not replace `3.11` with
-the system `python3` command.
-
-If the Open vSwitch service is not running after restarting WSL, run
-`sudo service openvswitch-switch start` again before starting the topology.
-
-### 7. Run the demo
-
-Use two WSL terminals. In both terminals, change to the repository directory
-and activate the virtual environment:
+Use two WSL terminals. In terminal 1, start the controller:
 
 ```bash
 cd ~/emergency-notification-network
 source .venv/bin/activate
-```
-
-In terminal 1, start the controller:
-
-```bash
 python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
 In terminal 2, start the topology:
 
 ```bash
-sudo service openvswitch-switch start
+cd ~/emergency-notification-network
 sudo mn -c
 sudo python3 topology/topo.py --no-tc
 ```
 
-The `--no-tc` option is required on WSL kernels that do not provide the Linux
-traffic-control qdiscs used by `TCLink`. It keeps the topology and OpenFlow
-demo functional, but does not emulate the configured bandwidth or delay.
-The topology opens the Mininet CLI without running a long automatic ping test;
-run `pingall` manually at the prompt when you want to check connectivity.
-
-When the `mininet>` prompt appears, start the server and subscribers. Use the
-absolute virtual-environment path because processes launched by Mininet do not
-inherit the shell's activated environment:
+When `mininet>` appears, run the server, clients, and alert sender. Replace
+`/home/<user>/emergency-notification-network` with your repository path:
 
 ```text
 mininet> hServer /home/<user>/emergency-notification-network/.venv/bin/python server/server.py &
 mininet> hC1 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C1 --server 10.0.0.1 --port 9999 &
 mininet> hC2 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C2 --server 10.0.0.1 --port 9999 &
 mininet> hC3 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C3 --server 10.0.0.1 --port 9999 &
-```
-
-Replace `/home/<user>/emergency-notification-network` with the output of
-`pwd` from the repository root. Send an alert with:
-
-```text
 mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
-```
-
-Exit Mininet with `exit`. Stop the controller with `Ctrl+C` in terminal 1.
-Run local tests from the activated WSL environment with:
-
-```bash
-python -m pytest tests/ -v
 ```
 
 ## Repository Structure
