@@ -77,6 +77,55 @@ pip3 install -r requirements.txt
 sudo apt-get install mininet openvswitch-switch
 ```
 
+## Native Ubuntu Setup
+
+For the full Mininet demo, use a native Ubuntu 22.04/24.04 installation or an
+Ubuntu VM. Run these commands in a terminal:
+
+```bash
+sudo apt update
+sudo apt install -y git python3.11 python3.11-venv mininet openvswitch-switch iperf3
+
+git clone https://github.com/<your-user>/emergency-notification-network.git
+cd emergency-notification-network
+
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python -m pip install --no-build-isolation -r requirements.txt
+
+python -c "import ryu; print('Ryu import OK')"
+sudo service openvswitch-switch start
+```
+
+Open a second terminal, activate the same environment, and start the Ryu
+controller:
+
+```bash
+cd emergency-notification-network
+source .venv/bin/activate
+python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
+```
+
+In a third terminal, start the Mininet topology:
+
+```bash
+cd emergency-notification-network
+sudo mn -c
+sudo python3 topology/topo.py
+```
+
+When `mininet>` appears, run the server, clients, and alert sender using the
+absolute path to `.venv/bin/python`:
+
+```text
+mininet> hServer /home/<user>/emergency-notification-network/.venv/bin/python server/server.py &
+mininet> hC1 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C1 --server 10.0.0.1 --port 9999 &
+mininet> hC2 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C2 --server 10.0.0.1 --port 9999 &
+mininet> hC3 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C3 --server 10.0.0.1 --port 9999 &
+mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
+```
+
 ## Using WSL 2
 
 Mininet and Open vSwitch must run inside a Linux environment. On Windows, use **WSL 2 with Ubuntu** rather than running the commands from PowerShell.
