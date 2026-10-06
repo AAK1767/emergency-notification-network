@@ -67,7 +67,7 @@ TYPE|SEQ|PRIORITY|TIMESTAMP|PAYLOAD
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-user>/emergency-notification-network.git
+git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
 # Install Python dependencies
@@ -91,7 +91,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.11
 
-git clone https://github.com/<your-user>/emergency-notification-network.git
+git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
 uv venv --seed --python 3.11 .venv
@@ -153,7 +153,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 uv python install 3.11
 
-git clone https://github.com/<your-user>/emergency-notification-network.git
+git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
 uv venv --seed --python 3.11 .venv
