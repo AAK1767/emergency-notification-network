@@ -79,17 +79,22 @@ sudo apt-get install mininet openvswitch-switch
 
 ## Native Ubuntu Setup
 
-For the full Mininet demo, use a native Ubuntu 22.04/24.04 installation or an
-Ubuntu VM. Run these commands in a terminal:
+For the full Mininet demo, use a native Ubuntu installation or an Ubuntu VM.
+Use `uv` for Python 3.11 because some Ubuntu releases do not provide
+`python3.11` through apt.
 
 ```bash
 sudo apt update
-sudo apt install -y git python3.11 python3.11-venv mininet openvswitch-switch iperf3
+sudo apt install -y git curl mininet openvswitch-switch iperf3
+
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv python install 3.11
 
 git clone https://github.com/<your-user>/emergency-notification-network.git
 cd emergency-notification-network
 
-python3.11 -m venv .venv
+uv venv --seed --python 3.11 .venv
 source .venv/bin/activate
 python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
 python -m pip install --no-build-isolation -r requirements.txt
