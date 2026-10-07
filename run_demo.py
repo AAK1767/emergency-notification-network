@@ -62,7 +62,9 @@ def run_demo(use_tc=True):
     hC3 = net.get("hC3")
 
     project_dir = os.path.dirname(os.path.abspath(__file__))
-    python = os.path.join(project_dir, ".venv", "bin", "python")
+    # Use the same interpreter for Mininet hosts as for this launcher. This
+    # keeps the system-Python demo consistent when started with sudo python3.
+    python = sys.executable
 
     # 0) Verify connectivity
     print("\n[DEMO] Running pingall...")

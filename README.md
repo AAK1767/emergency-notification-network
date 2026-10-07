@@ -94,22 +94,19 @@ uv python install 3.11
 git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
-uv venv --seed --python 3.11 .venv
-source .venv/bin/activate
-python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
-python -m pip install --no-build-isolation -r requirements.txt
+# Install the Python dependencies needed by the controller and applications.
+python3 -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python3 -m pip install --no-build-isolation -r requirements.txt
 
 python -c "import ryu; print('Ryu import OK')"
 sudo service openvswitch-switch start
 ```
 
-Open a second terminal, activate the same environment, and start the Ryu
-controller:
+Open a second terminal and start the Ryu controller:
 
 ```bash
 cd emergency-notification-network
-source .venv/bin/activate
-python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
+python3 controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
 In a third terminal, start the Mininet topology:
@@ -120,15 +117,15 @@ sudo mn -c
 sudo python3 topology/topo.py
 ```
 
-When `mininet>` appears, run the server, clients, and alert sender using the
-absolute path to `.venv/bin/python`:
+When `mininet>` appears, run the server, clients, and alert sender with
+`python3`:
 
 ```text
-mininet> hServer /home/<user>/emergency-notification-network/.venv/bin/python server/server.py &
-mininet> hC1 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C1 --server 10.0.0.1 --port 9999 &
-mininet> hC2 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C2 --server 10.0.0.1 --port 9999 &
-mininet> hC3 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C3 --server 10.0.0.1 --port 9999 &
-mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
+mininet> hServer python3 server/server.py &
+mininet> hC1 python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 &
+mininet> hC2 python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 &
+mininet> hC3 python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 &
+mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
 ```
 
 ## Using WSL 2
@@ -156,10 +153,8 @@ uv python install 3.11
 git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
-uv venv --seed --python 3.11 .venv
-source .venv/bin/activate
-python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
-python -m pip install --no-build-isolation -r requirements.txt
+python3 -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python3 -m pip install --no-build-isolation -r requirements.txt
 sudo service openvswitch-switch start
 ```
 
@@ -167,8 +162,7 @@ Use two WSL terminals. In terminal 1, start the controller:
 
 ```bash
 cd ~/emergency-notification-network
-source .venv/bin/activate
-python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
+python3 controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
 In terminal 2, start the topology:
@@ -180,14 +174,15 @@ sudo python3 topology/topo.py --no-tc
 ```
 
 When `mininet>` appears, run the server, clients, and alert sender. Replace
-`/home/<user>/emergency-notification-network` with your repository path:
+`/home/<user>/emergency-notification-network` with your repository path if
+using a custom working directory:
 
 ```text
-mininet> hServer /home/<user>/emergency-notification-network/.venv/bin/python server/server.py &
-mininet> hC1 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C1 --server 10.0.0.1 --port 9999 &
-mininet> hC2 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C2 --server 10.0.0.1 --port 9999 &
-mininet> hC3 /home/<user>/emergency-notification-network/.venv/bin/python client/client.py --id C3 --server 10.0.0.1 --port 9999 &
-mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
+mininet> hServer python3 server/server.py &
+mininet> hC1 python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 &
+mininet> hC2 python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 &
+mininet> hC3 python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 &
+mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
 ```
 
 ## Repository Structure
@@ -244,14 +239,19 @@ python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 In a second terminal, from the repository root, run:
 
 ```bash
-sudo .venv/bin/python run_demo.py
+sudo python3 run_demo.py
 ```
 
 For WSL kernels that do not support Mininet traffic-control qdiscs, use:
 
 ```bash
-sudo .venv/bin/python run_demo.py --no-tc
+sudo python3 run_demo.py --no-tc
 ```
+
+The demo intentionally uses Ubuntu's system `python3`, including for the
+server, clients, and alert sender started inside Mininet. Mininet is installed
+as an Ubuntu system package, so this avoids a separate virtual-environment
+setup for the demo.
 
 `run_demo.py` automates the parts that are otherwise entered at the Mininet
 prompt:
@@ -266,7 +266,7 @@ prompt:
 
 The script does not start the Ryu controller and does not open xterm windows;
 those must be started separately if needed. It uses the repository's
-`.venv/bin/python` for the host processes.
+system `python3` interpreter for the host processes.
 
 ### Verify the automated demo visibly
 
@@ -325,6 +325,22 @@ Verify the same three client `ALERT received` lines and three server
 `ACK ... received` lines described in the automated flow. You can also type
 an alert into the server's interactive CLI; `server/server.py` broadcasts
 non-empty lines entered there to all currently registered subscribers.
+
+### Troubleshooting: `No module named 'mininet'`
+
+If `sudo python3 run_demo.py` reports `ModuleNotFoundError:
+No module named 'mininet'`, confirm that Mininet is installed in the
+WSL/Ubuntu distribution, not only on the Windows host:
+
+```bash
+sudo apt update
+sudo apt install -y mininet openvswitch-switch
+python3 -c "import mininet; print('Mininet import OK')"
+```
+
+If the import check fails, run the installation commands as an Ubuntu/WSL
+administrator and retry the demo. This error occurs before the topology is
+created.
 
 ## Running Tests (Local, No Mininet Required)
 
