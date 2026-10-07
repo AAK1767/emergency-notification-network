@@ -274,6 +274,12 @@ The script does not start the Ryu controller and does not open xterm windows;
 those must be started separately if needed. It uses the repository's
 system `python3` interpreter for the host processes.
 
+If Ryu is not running, the UDP notification and ACK flow still works. The
+server reports once that the optional REST event API is unavailable and then
+skips further REST callbacks instead of printing a connection-refused warning
+for every subscriber and alert. To exercise REST event callbacks, start Ryu
+before the demo and ensure its REST API is reachable from the Mininet hosts.
+
 ### Verify the automated demo visibly
 
 Watch the demo terminal for these two kinds of log lines. After the automated alert is sent, `run_demo.py` prints a **Delivery logs**
