@@ -276,9 +276,10 @@ system `python3` interpreter for the host processes.
 
 ### Verify the automated demo visibly
 
-Watch the demo terminal for these two kinds of log lines. Each client should
-print an `ALERT received` line for the same sequence number, and the server
-should print an `ACK ... received` line for each subscriber:
+Watch the demo terminal for these two kinds of log lines. After the automated alert is sent, `run_demo.py` prints a **Delivery logs**
+section containing the server log and each client log. Each client should
+have an `ALERT received` line for the same sequence number, and the server
+should have an `ACK ... received` line for each subscriber:
 
 ```text
 [CLIENT:C1] ALERT received [SEQ=<n> PRIO=HIGH]: FIRE IN BLOCK A
@@ -291,7 +292,15 @@ should print an `ACK ... received` line for each subscriber:
 
 The timestamp prefix and the exact sequence number vary. The final
 `All ACKs received for ALERT` server message confirms that the complete
-delivery cycle finished. To inspect the SDN rule from the Mininet CLI, run:
+delivery cycle finished. The script also prints the temporary log directory;
+from the Mininet CLI you can recheck a log with, for example:
+
+```text
+mininet> hC1 cat /tmp/emergency-notification-demo-<pid>/C1.log
+mininet> hServer cat /tmp/emergency-notification-demo-<pid>/server.log
+```
+
+To inspect the SDN rule from the Mininet CLI, run:
 
 ```text
 mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13

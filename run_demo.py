@@ -26,6 +26,7 @@ import sys
 import os
 import time
 import argparse
+import shlex
 from functools import partial
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -65,6 +66,16 @@ def run_demo(use_tc=True):
     # Use the same interpreter for Mininet hosts as for this launcher. This
     # keeps the system-Python demo consistent when started with sudo python3.
     python = sys.executable
+    log_dir = f"/tmp/emergency-notification-demo-{os.getpid()}"
+    os.makedirs(log_dir, exist_ok=True)
+    server_log = os.path.join(log_dir, "server.log")
+    client_logs = {
+        "C1": os.path.join(log_dir, "C1.log"),
+        "C2": os.path.join(log_dir, "C2.log"),
+        "C3": os.path.join(log_dir, "C3.log"),
+    }
+    python_cmd = shlex.quote(python)
+    project_cmd = shlex.quote(project_dir)
 
     # 0) Verify connectivity after allowing Mininet/OVS startup to converge
     print("\n[DEMO] Running pingall (startup convergence)...")
@@ -74,28 +85,51 @@ def run_demo(use_tc=True):
 
     # 1) Start the server
     print("\n[DEMO] Starting Emergency Server on hServer (10.0.0.1)...")
-    hServer.cmd(f"cd {project_dir} && {python} server/server.py &")
+    hServer.cmd(
+        f"cd {project_cmd} && {python_cmd} server/server.py "
+        f"> {shlex.quote(server_log)} 2>&1 &"
+    )
     time.sleep(2)
 
     # 2) Start clients
     print("[DEMO] Starting subscribers C1, C2, C3...")
-    hC1.cmd(f"cd {project_dir} && {python} client/client.py --id C1 --server 10.0.0.1 --port 9999 &")
+    hC1.cmd(
+        f"cd {project_cmd} && {python_cmd} client/client.py "
+        f"--id C1 --server 10.0.0.1 --port 9999 "
+        f"> {shlex.quote(client_logs['C1'])} 2>&1 &"
+    )
     time.sleep(0.5)
-    hC2.cmd(f"cd {project_dir} && {python} client/client.py --id C2 --server 10.0.0.1 --port 9999 &")
+    hC2.cmd(
+        f"cd {project_cmd} && {python_cmd} client/client.py "
+        f"--id C2 --server 10.0.0.1 --port 9999 "
+        f"> {shlex.quote(client_logs['C2'])} 2>&1 &"
+    )
     time.sleep(0.5)
-    hC3.cmd(f"cd {project_dir} && {python} client/client.py --id C3 --server 10.0.0.1 --port 9999 &")
+    hC3.cmd(
+        f"cd {project_cmd} && {python_cmd} client/client.py "
+        f"--id C3 --server 10.0.0.1 --port 9999 "
+        f"> {shlex.quote(client_logs['C3'])} 2>&1 &"
+    )
     time.sleep(2)
 
     # 3) Send an alert from the admin host
     print("\n[DEMO] Sending emergency alert...")
     hAdmin = net.get("hAdmin")
     hAdmin.cmd(
-        f'cd {project_dir} && {python} server/send_alert.py '
+        f"cd {project_cmd} && {python_cmd} server/send_alert.py "
         '--server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A" &'
     )
+    time.sleep(1)
+
+    print("\n[DEMO] Delivery logs:")
+    print(hServer.cmd(f"cat {shlex.quote(server_log)}"))
+    for client, host in (("C1", hC1), ("C2", hC2), ("C3", hC3)):
+        print(f"[DEMO] {client} log:")
+        print(host.cmd(f"cat {shlex.quote(client_logs[client])}"))
 
     # For the demo we drop into the Mininet CLI so the user can interact
     print("\n[DEMO] System ready. Use the Mininet CLI to interact.")
+    print(f"[DEMO] Logs are also available under {log_dir}.")
     print("[DEMO] To send an alert, type at the hServer xterm.")
     print("[DEMO] To verify flows: sh ovs-ofctl dump-flows s1 -O OpenFlow13\n")
 
