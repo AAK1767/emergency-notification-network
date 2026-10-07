@@ -51,7 +51,11 @@ def run_demo(use_tc=True):
         link=TCLink if use_tc else Link,
         autoSetMacs=True,
     )
+    # Give Mininet hosts a management/NAT path to the WSL or VM namespace,
+    # where Ryu's REST API listens on port 8080.
+    net.addNAT(name="nat0", ip="10.0.0.254/24", connect=True)
     net.start()
+    net.get("nat0").configDefault()
 
     print("\n" + "=" * 60)
     print("  EMERGENCY NOTIFICATION NETWORK — D1 DEMO")

@@ -30,7 +30,10 @@ class EmergencyServer:
         self.sock.bind((self.host, self.port))
         
         c = config["controller"]
-        self.controller = ControllerClient(c["ip"], c["rest_port"])
+        self.controller = ControllerClient(
+            c.get("rest_ip", c["ip"]),
+            c["rest_port"],
+        )
         self.sub_mgr = SubscriberManager()
         
         p = config["protocol"]

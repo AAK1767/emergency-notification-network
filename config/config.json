@@ -20,6 +20,7 @@
   },
   "controller": {
     "ip": "127.0.0.1",
+    "rest_ip": "10.0.0.254",
     "rest_port": 8080,
     "openflow_port": 6653,
     "stats_poll_interval_s": 2,

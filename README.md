@@ -256,6 +256,10 @@ server, clients, and alert sender started inside Mininet. Mininet is installed
 as an Ubuntu system package, so this avoids a separate virtual-environment
 setup for the demo.
 
+The demo adds a management/NAT interface at `10.0.0.254` so Mininet hosts can
+reach the Ryu REST API at `10.0.0.254:8080`. OpenFlow still uses
+`127.0.0.1:6653`; these are separate controller connections.
+
 Run `sudo mn -c` again before retrying if the demo is interrupted or exits
 without cleaning up the network.
 
@@ -274,11 +278,17 @@ The script does not start the Ryu controller and does not open xterm windows;
 those must be started separately if needed. It uses the repository's
 system `python3` interpreter for the host processes.
 
+To verify the REST path from the Mininet CLI, run:
+
+```text
+mininet> hServer ping -c 2 10.0.0.254
+mininet> hServer wget -qO- --post-data='{"event":"test"}' --header='Content-Type: application/json' http://10.0.0.254:8080/api/event
+```
+
 If Ryu is not running, the UDP notification and ACK flow still works. The
 server reports once that the optional REST event API is unavailable and then
 skips further REST callbacks instead of printing a connection-refused warning
-for every subscriber and alert. To exercise REST event callbacks, start Ryu
-before the demo and ensure its REST API is reachable from the Mininet hosts.
+for every subscriber and alert.
 
 ### Verify the automated demo visibly
 

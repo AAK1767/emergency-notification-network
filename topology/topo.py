@@ -134,7 +134,10 @@ def main():
         link=Link if args.no_tc else TCLink,
         autoSetMacs=True,
     )
+    # Make the host namespace reachable from Mininet for the Ryu REST API.
+    net.addNAT(name="nat0", ip="10.0.0.254/24", connect=True)
     net.start()
+    net.get("nat0").configDefault()
 
     print("\n=== Emergency Notification Network Topology started ===")
     print("hServer : 10.0.0.1")
