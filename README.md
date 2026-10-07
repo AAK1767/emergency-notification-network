@@ -223,47 +223,108 @@ mininet> hAdmin /home/<user>/emergency-notification-network/.venv/bin/python ser
 
 ## Quick Start (D1 Demo)
 
-### Step 1 — Start the Ryu Controller
+The D1 demo showcases **end-to-end emergency notification delivery**:
+
+```text
+hAdmin sends an ALERT → hServer broadcasts it → hC1/hC2/hC3 receive it and send ACKs
+```
+
+The clients register with `hServer` first. The server then tracks each ACK and
+reports when the alert has been acknowledged by all registered subscribers.
+
+### Option A — Run the automated demo
+
+This is the shortest way to run the complete D1 flow. Start the Ryu controller
+in one terminal first:
 
 ```bash
 python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
-### Step 2 — Start the Mininet Topology
+In a second terminal, from the repository root, run:
 
 ```bash
-sudo python3 topology/topo.py
+sudo .venv/bin/python run_demo.py
 ```
 
-### Step 3 — Start the Server (from Mininet CLI)
+For WSL kernels that do not support Mininet traffic-control qdiscs, use:
 
 ```bash
+sudo .venv/bin/python run_demo.py --no-tc
+```
+
+`run_demo.py` automates the parts that are otherwise entered at the Mininet
+prompt:
+
+1. Creates and starts the D1 topology.
+2. Runs `pingall` to verify host connectivity.
+3. Starts `server/server.py` on `hServer`.
+4. Starts clients `C1`, `C2`, and `C3` on `hC1`, `hC2`, and `hC3`.
+5. Sends the fixed demo message `FIRE IN BLOCK A` from `hAdmin`.
+6. Drops into the Mininet CLI so that commands such as `dump` and
+   `ovs-ofctl dump-flows s1 -O OpenFlow13` can still be run interactively.
+
+The script does not start the Ryu controller and does not open xterm windows;
+those must be started separately if needed. It uses the repository's
+`.venv/bin/python` for the host processes.
+
+### Verify the automated demo visibly
+
+Watch the demo terminal for these two kinds of log lines. Each client should
+print an `ALERT received` line for the same sequence number, and the server
+should print an `ACK ... received` line for each subscriber:
+
+```text
+[CLIENT:C1] ALERT received [SEQ=<n> PRIO=HIGH]: FIRE IN BLOCK A
+[CLIENT:C2] ALERT received [SEQ=<n> PRIO=HIGH]: FIRE IN BLOCK A
+[CLIENT:C3] ALERT received [SEQ=<n> PRIO=HIGH]: FIRE IN BLOCK A
+[SERVER:ALERT] ACK seq=<n> received from C1
+[SERVER:ALERT] ACK seq=<n> received from C2
+[SERVER:ALERT] ACK seq=<n> received from C3
+```
+
+The timestamp prefix and the exact sequence number vary. The final
+`All ACKs received for ALERT` server message confirms that the complete
+delivery cycle finished. To inspect the SDN rule from the Mininet CLI, run:
+
+```text
+mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13
+```
+
+Look for the flow matching `udp,tp_dst=9999` with `set_queue:1`. This checks
+the emergency forwarding rule; the client and server log lines above check
+actual notification delivery and ACKs.
+
+### Option B — Run the D1 flow manually
+
+Start the Ryu controller and topology as described above, then at the
+`mininet>` prompt start the server and all three clients:
+
+```text
 mininet> hServer python3 server/server.py &
-```
-
-### Step 4 — Start Subscriber Clients
-
-```bash
 mininet> hC1 python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 &
 mininet> hC2 python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 &
 mininet> hC3 python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 &
 ```
 
-### Step 5 — Send an Emergency Alert
+For visibly separated client and server logs, open xterms before starting
+these processes:
 
-From the hServer terminal, type the alert text and press Enter, **or** from a separate terminal:
+```text
+mininet> xterm hServer hC1 hC2 hC3
+```
 
-```bash
+Run the commands above in the corresponding xterms, then send an alert from
+`hAdmin`:
+
+```text
 mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
 ```
 
-### Step 6 — Verify SDN Emergency Flow
-
-```bash
-mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13
-```
-
-Look for the flow matching `udp,tp_dst=9999` with `set_queue:1`.
+Verify the same three client `ALERT received` lines and three server
+`ACK ... received` lines described in the automated flow. You can also type
+an alert into the server's interactive CLI; `server/server.py` broadcasts
+non-empty lines entered there to all currently registered subscribers.
 
 ## Running Tests (Local, No Mininet Required)
 
