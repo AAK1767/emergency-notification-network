@@ -66,8 +66,10 @@ def run_demo(use_tc=True):
     # keeps the system-Python demo consistent when started with sudo python3.
     python = sys.executable
 
-    # 0) Verify connectivity
-    print("\n[DEMO] Running pingall...")
+    # 0) Verify connectivity after allowing Mininet/OVS startup to converge
+    print("\n[DEMO] Running pingall (startup convergence)...")
+    net.pingAll()
+    print("\n[DEMO] Running pingall again (final connectivity check)...")
     net.pingAll()
 
     # 1) Start the server

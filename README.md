@@ -236,15 +236,18 @@ in one terminal first:
 python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
-In a second terminal, from the repository root, run:
+In a second terminal, from the repository root, clean up any stale Mininet
+state, then run the automated demo:
 
 ```bash
+sudo mn -c
 sudo python3 run_demo.py
 ```
 
 For WSL kernels that do not support Mininet traffic-control qdiscs, use:
 
 ```bash
+sudo mn -c
 sudo python3 run_demo.py --no-tc
 ```
 
@@ -252,6 +255,9 @@ The demo intentionally uses Ubuntu's system `python3`, including for the
 server, clients, and alert sender started inside Mininet. Mininet is installed
 as an Ubuntu system package, so this avoids a separate virtual-environment
 setup for the demo.
+
+Run `sudo mn -c` again before retrying if the demo is interrupted or exits
+without cleaning up the network.
 
 `run_demo.py` automates the parts that are otherwise entered at the Mininet
 prompt:
