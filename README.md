@@ -8,33 +8,11 @@ During a network emergency, alert traffic must reach subscribers quickly — eve
 
 ## Architecture
 
-```
-Admin / CLI
-     |
-     v
- UDP Server          ──REST──>  Ryu SDN Controller
-     |                              |
-     v                         OpenFlow 1.3
- SDN-controlled network             |
-     |                              v
-  +--+--+--+                  OVS Switches
-  |  |  |  |                  (s1, s2, s3, s4)
- C1 C2 C3 ...
-```
+![Emergency notification network architecture](images/architecture.jpeg)
 
 ### Topology
 
-```
-                      ┌── s2 ──┐
-                      │        │
-hServer ── s1 ────────┤        ├──── s4 ── hC1
-             │        │        │      └── hC2
-           hAdmin     └── s3 ──┘
-                           │
-                          hC3
-
-Noise: hNoise1 @ s2, hNoise2 @ s3
-```
+![Mininet network topology](images/topology.jpeg)
 
 Two redundant paths (s1→s2→s4 and s1→s3→s4) allow rerouting on link failure.
 
