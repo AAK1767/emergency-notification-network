@@ -314,47 +314,42 @@ actual notification delivery and ACKs.
 
 ### Option B — Run the D1 flow manually
 
-Start the Ryu controller and topology as described above, then at the
-`mininet>` prompt start the server and all three clients:
+Start the Ryu controller and topology as described above. For a manual
+non-GUI run, start the server and clients from the `mininet>` prompt with
+their output redirected to log files:
 
 ```text
-mininet> hServer python3 server/server.py &
-mininet> hC1 python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 &
-mininet> hC2 python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 &
-mininet> hC3 python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 &
+mininet> hServer sh -c 'python3 server/server.py > /tmp/d1-server.log 2>&1' &
+mininet> hC1 sh -c 'python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 > /tmp/d1-C1.log 2>&1' &
+mininet> hC2 sh -c 'python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 > /tmp/d1-C2.log 2>&1' &
+mininet> hC3 sh -c 'python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 > /tmp/d1-C3.log 2>&1' &
 ```
 
-For visibly separated client and server logs, open xterms before starting
-these processes:
-
-```text
-mininet> xterm hServer hC1 hC2 hC3
-```
-
-The `xterm` command requires both `xterm` and `xhost`:
-
-```bash
-sudo apt install -y xterm x11-xserver-utils
-```
-
-On WSL, it also requires WSLg or another running X server with `DISPLAY`
-configured. If `xterm` fails with `FileNotFoundError: xhost`, install
-`x11-xserver-utils` and restart the Mininet topology. If no graphical display
-is available, do not use `xterm`; start the processes from the `mininet>`
-prompt and inspect their output using the automated demo's delivery logs or
-the commands described below.
-
-Run the commands above in the corresponding xterms, then send an alert from
-`hAdmin`:
+Wait a few seconds for the clients to register, then send the alert:
 
 ```text
 mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "FIRE IN BLOCK A"
 ```
 
-Verify the same three client `ALERT received` lines and three server
-`ACK ... received` lines described in the automated flow. You can also type
-an alert into the server's interactive CLI; `server/server.py` broadcasts
-non-empty lines entered there to all currently registered subscribers.
+Print the captured logs directly in the Mininet CLI:
+
+```text
+mininet> hServer cat /tmp/d1-server.log
+mininet> hC1 cat /tmp/d1-C1.log
+mininet> hC2 cat /tmp/d1-C2.log
+mininet> hC3 cat /tmp/d1-C3.log
+```
+
+You should see the server's three `ACK ... received` lines and one
+`ALERT received` line in each client log. This verifies delivery without
+opening xterms. To follow a log between commands, use:
+
+```text
+mininet> hServer tail -f /tmp/d1-server.log &
+```
+
+Stop that `tail` process with `Ctrl-C`, or clean up with `sudo mn -c` after
+exiting the Mininet CLI.
 
 ### Troubleshooting: `No module named 'mininet'`
 
