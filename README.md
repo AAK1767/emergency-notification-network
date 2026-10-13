@@ -73,17 +73,21 @@ git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
 # Install the Python dependencies needed by the controller and applications.
-python3 -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
-python3 -m pip install --no-build-isolation -r requirements.txt
+uv venv --seed --python 3.11 .venv
+source .venv/bin/activate
+python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python -m pip install --no-build-isolation -r requirements.txt
 
 python -c "import ryu; print('Ryu import OK')"
 sudo service openvswitch-switch start
 ```
 
-Open a second terminal and start the Ryu controller:
+Open a second terminal, activate the virtual environment, and start the Ryu
+controller:
 
 ```bash
 cd emergency-notification-network
+source .venv/bin/activate
 python3 controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
@@ -131,8 +135,10 @@ uv python install 3.11
 git clone https://github.com/AAK1767/emergency-notification-network.git
 cd emergency-notification-network
 
-python3 -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
-python3 -m pip install --no-build-isolation -r requirements.txt
+uv venv --seed --python 3.11 .venv
+source .venv/bin/activate
+python -m pip install "pip==20.3.4" "setuptools==67.6.1" wheel "eventlet==0.33.3"
+python -m pip install --no-build-isolation -r requirements.txt
 sudo service openvswitch-switch start
 ```
 
@@ -140,6 +146,7 @@ Use two WSL terminals. In terminal 1, start the controller:
 
 ```bash
 cd ~/emergency-notification-network
+source .venv/bin/activate
 python3 controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
@@ -208,9 +215,10 @@ reports when the alert has been acknowledged by all registered subscribers.
 ### Option A — Run the automated demo
 
 This is the shortest way to run the complete D1 flow. Start the Ryu controller
-in one terminal first:
+in one terminal first, after activating the virtual environment:
 
 ```bash
+source .venv/bin/activate
 python controller/run_ryu.py controller/ryu_app.py --observe-links --verbose
 ```
 
