@@ -63,7 +63,7 @@ Use `uv` for Python 3.11 because some Ubuntu releases do not provide
 
 ```bash
 sudo apt update
-sudo apt install -y git curl mininet openvswitch-switch iperf3
+sudo apt install -y git curl mininet openvswitch-switch iperf3 xterm x11-xserver-utils
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -126,7 +126,7 @@ Then run this in Ubuntu:
 
 ```bash
 sudo apt update
-sudo apt install -y git curl mininet openvswitch-switch iperf3
+sudo apt install -y git curl mininet openvswitch-switch iperf3 xterm x11-xserver-utils
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
@@ -330,6 +330,19 @@ these processes:
 ```text
 mininet> xterm hServer hC1 hC2 hC3
 ```
+
+The `xterm` command requires both `xterm` and `xhost`:
+
+```bash
+sudo apt install -y xterm x11-xserver-utils
+```
+
+On WSL, it also requires WSLg or another running X server with `DISPLAY`
+configured. If `xterm` fails with `FileNotFoundError: xhost`, install
+`x11-xserver-utils` and restart the Mininet topology. If no graphical display
+is available, do not use `xterm`; start the processes from the `mininet>`
+prompt and inspect their output using the automated demo's delivery logs or
+the commands described below.
 
 Run the commands above in the corresponding xterms, then send an alert from
 `hAdmin`:
