@@ -22,11 +22,16 @@ from common import protocol, logger
 
 def send_alert(server_ip, server_port, message, priority=protocol.PRIO_HIGH):
     """Send a single alert trigger to the notification server."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    msg = protocol.make_alert(0, message, priority)  # seq=0 => server assigns real seq
-    sock.sendto(msg, (server_ip, server_port))
-    logger.info("ADMIN", f"Alert sent to {server_ip}:{server_port}: {message}")
-    sock.close()
+    if not message or not message.strip():
+        raise ValueError("Alert message cannot be empty")
+    if not 1 <= int(server_port) <= 65535:
+        raise ValueError("Server port must be between 1 and 65535")
+    msg = protocol.make_alert(0, message.strip(), priority)
+    with socket.socket(socket.AF_INET6 if ":" in server_ip else socket.AF_INET,
+                       socket.SOCK_DGRAM) as sock:
+        sock.settimeout(3)
+        sock.sendto(msg, (server_ip, int(server_port)))
+    logger.info("ADMIN", f"Alert sent to {server_ip}:{server_port}: {message.strip()}")
 
 
 def main():
@@ -39,18 +44,20 @@ def main():
                         choices=["HIGH", "NORMAL", "LOW"])
     args = parser.parse_args()
 
-    if args.message:
-        send_alert(args.server, args.port, args.message, args.priority)
-    else:
-        print("Emergency Alert Sender — Interactive Mode")
-        print("Type alert messages, press Enter to send. Ctrl-C to quit.\n")
-        try:
+    try:
+        if args.message:
+            send_alert(args.server, args.port, args.message, args.priority)
+        else:
+            print("Emergency Alert Sender — Interactive Mode")
+            print("Type alert messages, press Enter to send. Ctrl-C to quit.\n")
             while True:
                 text = input("ALERT> ").strip()
                 if text:
                     send_alert(args.server, args.port, text, args.priority)
-        except (KeyboardInterrupt, EOFError):
-            print("\nExiting.")
+    except (KeyboardInterrupt, EOFError):
+        print("\nExiting.")
+    except (OSError, ValueError, protocol.ProtocolError) as exc:
+        parser.error(str(exc))
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ class AlertManager:
                         'retries': 0, 'ip': ip, 'port': port, 
                         'send_ts': send_ts, 'text': text, 'prio': priority
                     }
-                except Exception as e:
+                except (OSError, ValueError) as e:
                     logger.error("SERVER:ALERT", f"Failed to send to {sub_id} ({ip}:{port}): {e}")
             
             if pending:
@@ -84,7 +84,7 @@ class AlertManager:
                         try:
                             msg_bytes = protocol.make_alert(seq, info['text'], info['prio'])
                             self.sock.sendto(msg_bytes, (info['ip'], info['port']))
-                        except Exception as e:
+                        except (OSError, ValueError) as e:
                             logger.error("SERVER:ALERT", f"Failed retransmit to {sub_id}: {e}")
                 
                 for sub_id in to_remove:

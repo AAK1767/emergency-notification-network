@@ -12,6 +12,7 @@ Examples:
     HEARTBEAT|0|NORMAL|1727670102.004|subscriber1
 """
 
+import math
 import time
 
 DELIMITER = "|"
@@ -40,12 +41,21 @@ def encode(msg_type: str, seq: int, priority: str, payload: str, timestamp: floa
     """Encode a message into bytes ready to send over UDP."""
     if msg_type not in VALID_TYPES:
         raise ValueError(f"Unknown message type: {msg_type}")
+    if not isinstance(seq, int) or seq < 0:
+        raise ValueError("Sequence number must be a non-negative integer")
     if priority not in VALID_PRIORITIES:
         raise ValueError(f"Unknown priority: {priority}")
+    if not isinstance(payload, str) or not payload.strip():
+        raise ValueError("Payload must be a non-empty string")
     if timestamp is None:
         timestamp = time.time()
+    if not isinstance(timestamp, (int, float)) or not math.isfinite(timestamp):
+        raise ValueError("Timestamp must be a finite number")
     raw = DELIMITER.join([msg_type, str(seq), priority, f"{timestamp:.6f}", payload])
-    return raw.encode("utf-8")
+    encoded = raw.encode("utf-8")
+    if len(encoded) > 4096:
+        raise ValueError("Encoded message exceeds the 4096-byte UDP limit")
+    return encoded
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -91,16 +101,22 @@ def decode(data: bytes) -> Message:
 
     try:
         seq = int(seq_str)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise ProtocolError(f"Invalid seq number: {seq_str!r}") from exc
+    if seq < 0:
+        raise ProtocolError("Sequence number must be non-negative")
 
     if priority not in VALID_PRIORITIES:
         raise ProtocolError(f"Unknown priority: {priority!r}")
 
     try:
         timestamp = float(ts_str)
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise ProtocolError(f"Invalid timestamp: {ts_str!r}") from exc
+    if not math.isfinite(timestamp):
+        raise ProtocolError("Timestamp must be finite")
+    if not payload.strip():
+        raise ProtocolError("Payload must be non-empty")
 
     return Message(msg_type, seq, priority, timestamp, payload, raw=raw)
 

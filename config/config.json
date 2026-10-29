@@ -25,6 +25,7 @@
     "openflow_port": 6653,
     "stats_poll_interval_s": 2,
     "congestion_threshold_percent": 70,
+    "link_capacity_mbps": 10,
     "emergency_queue_id": 1,
     "default_queue_id": 0
   },

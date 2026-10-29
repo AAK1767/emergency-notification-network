@@ -1,11 +1,12 @@
 """
 ryu_app.py — Ryu SDN controller for the Emergency Notification Network.
 
-Features (D1):
+Features:
   - OpenFlow 1.3 switch handshake
   - L2 learning-switch forwarding
   - Emergency traffic classification (UDP dst port 9999 -> high-priority queue)
-  - Port-statistics monitoring thread
+  - Port-statistics monitoring with congestion state transitions
+  - Link-failure detection and learned-flow invalidation
   - REST API endpoint for application events
 
 Run with:
@@ -62,6 +63,7 @@ class EmergencyController(app_manager.RyuApp):
         self.emergency_port = proto.get("emergency_port", 9999)
         self.stats_interval = ctrl.get("stats_poll_interval_s", 2)
         self.congestion_thresh = ctrl.get("congestion_threshold_percent", 70)
+        self.link_capacity_bps = ctrl.get("link_capacity_mbps", 10) * 1_000_000
         self.em_queue = ctrl.get("emergency_queue_id", 1)
         self.default_queue = ctrl.get("default_queue_id", 0)
 
@@ -73,6 +75,8 @@ class EmergencyController(app_manager.RyuApp):
 
         # track congested ports
         self.congested = defaultdict(set)
+        self.congestion_events = []
+        self._datapaths = {}
 
         # REST API
         wsgi = kwargs["wsgi"]
@@ -93,27 +97,26 @@ class EmergencyController(app_manager.RyuApp):
 
         LOG.info("[SDN] Switch s%s connected (dpid=%s)", dp.id, dp.id)
 
-        # Let OVS handle ordinary L2/ARP traffic locally. Emergency UDP traffic
-        # matches the higher-priority rule below and is sent to the controller.
-        match = parser.OFPMatch()
-        actions = [parser.OFPActionOutput(ofp.OFPP_NORMAL)]
-        self._add_flow(dp, 0, match, actions, table_id=0)
+        self._install_base_flows(dp)
 
-        # Emergency UDP flow — high priority
+    def _install_base_flows(self, dp):
+        ofp = dp.ofproto
+        parser = dp.ofproto_parser
+        match = parser.OFPMatch()
+        self._add_flow(dp, 0, match, [parser.OFPActionOutput(ofp.OFPP_NORMAL)])
+
         match_em = parser.OFPMatch(
-            eth_type=0x0800,       # IPv4
-            ip_proto=17,           # UDP
-            udp_dst=self.emergency_port,
+            eth_type=0x0800, ip_proto=17, udp_dst=self.emergency_port
         )
-        # Action: set queue + send to controller (controller will output to correct port)
         actions_em = [
             parser.OFPActionSetQueue(self.em_queue),
             parser.OFPActionOutput(ofp.OFPP_CONTROLLER, ofp.OFPCML_NO_BUFFER),
         ]
-        self._add_flow(dp, 100, match_em, actions_em, table_id=0)
-
-        LOG.info("[SDN] Emergency flow installed on s%s (udp_dst=%d, queue=%d)",
-                 dp.id, self.emergency_port, self.em_queue)
+        self._add_flow(dp, 100, match_em, actions_em)
+        LOG.info(
+            "[SDN] Emergency flow installed on s%s (udp_dst=%d, queue=%d)",
+            dp.id, self.emergency_port, self.em_queue,
+        )
 
     # ──────────────────────────────────────────────────────────────────────
     # Packet-In — L2 learning switch
@@ -208,18 +211,41 @@ class EmergencyController(app_manager.RyuApp):
                     # bits per second
                     tx_bps = (tx_bytes - prev_tx) * 8 / dt
                     rx_bps = (rx_bytes - prev_rx) * 8 / dt
-                    # assume 10 Mbps links for utilization
-                    link_bps = 10_000_000
-                    util = max(tx_bps, rx_bps) / link_bps * 100
-                    if util >= self.congestion_thresh:
-                        if port_no not in self.congested[dpid]:
+                    util = max(tx_bps, rx_bps) / self.link_capacity_bps * 100
+                    is_congested = util >= self.congestion_thresh
+                    was_congested = port_no in self.congested[dpid]
+                    if is_congested != was_congested:
+                        if is_congested:
                             self.congested[dpid].add(port_no)
-                            LOG.warning("[SDN] s%s port=%d utilization=%.1f%% — CONGESTION",
-                                        dpid, port_no, util)
-                    else:
-                        self.congested[dpid].discard(port_no)
+                            state = "CONGESTION_ON"
+                            LOG.warning(
+                                "[SDN] s%s port=%d utilization=%.1f%% — CONGESTION",
+                                dpid, port_no, util,
+                            )
+                        else:
+                            self.congested[dpid].discard(port_no)
+                            state = "CONGESTION_OFF"
+                            LOG.info(
+                                "[SDN] s%s port=%d utilization=%.1f%% — congestion cleared",
+                                dpid, port_no, util,
+                            )
+                        self.congestion_events.append(
+                            (time.time(), dpid, port_no, util, state)
+                        )
 
             self.port_stats[dpid][port_no] = (now, tx_bytes, rx_bytes)
+
+    @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
+    def port_status_handler(self, ev):
+        """Forget paths using a failed port so the next packet is relearned."""
+        msg = ev.msg
+        reason = msg.reason
+        desc = msg.desc
+        if reason == msg.datapath.ofproto.OFPPR_DELETE or desc.state & 1:
+            dpid = msg.datapath.id
+            self.mac_to_port[dpid].clear()
+            self._delete_learned_flows(msg.datapath)
+            LOG.warning("[SDN] s%s port=%d is down; relearning paths", dpid, desc.port_no)
 
     # ──────────────────────────────────────────────────────────────────────
     # Helpers
@@ -238,12 +264,24 @@ class EmergencyController(app_manager.RyuApp):
         )
         dp.send_msg(mod)
 
+    def _delete_learned_flows(self, dp):
+        parser = dp.ofproto_parser
+        ofp = dp.ofproto
+        request = parser.OFPFlowMod(
+            datapath=dp,
+            command=ofp.OFPFC_DELETE,
+            out_port=ofp.OFPP_ANY,
+            out_group=ofp.OFPG_ANY,
+            table_id=0,
+            match=parser.OFPMatch(),
+        )
+        dp.send_msg(request)
+        self._install_base_flows(dp)
+
     # ──────────────────────────────────────────────────────────────────────
     # Stats request helpers (called from poller)
     # We store datapaths so the poller can send stats requests
     # ──────────────────────────────────────────────────────────────────────
-
-    _datapaths = {}
 
     @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, DEAD_DISPATCHER])
     def state_change_handler(self, ev):
@@ -277,6 +315,7 @@ class EmergencyRestApi(ControllerBase):
             body = json.loads(req.body)
             event = body.get("event", "unknown")
             LOG.info("[SDN:API] Application event received: %s  data=%s", event, body)
-        except Exception as e:
+        except (TypeError, ValueError, json.JSONDecodeError) as e:
             LOG.error("[SDN:API] Bad request: %s", e)
+            return json.dumps({"status": "error", "message": str(e)}).encode("utf-8")
         return json.dumps({"status": "ok"}).encode("utf-8")

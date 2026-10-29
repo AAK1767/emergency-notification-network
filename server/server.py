@@ -81,6 +81,14 @@ class EmergencyServer:
         ip, port = addr
         # Typically the client includes its subscriber ID in the payload for REG/ACK
         sub_id = msg.payload.strip()
+        if msg.msg_type in {
+            protocol.MSG_REGISTER,
+            protocol.MSG_UNREGISTER,
+            protocol.MSG_HEARTBEAT,
+            protocol.MSG_ACK,
+        } and not sub_id:
+            logger.warn("SERVER", f"Ignoring {msg.msg_type} with an empty subscriber ID")
+            return
         
         if msg.msg_type == protocol.MSG_REGISTER:
             self.sub_mgr.register(sub_id, ip, port, receive_ts)
@@ -121,7 +129,7 @@ class EmergencyServer:
                     self.alert_mgr.broadcast_alert(text, subs)
             except EOFError:
                 break
-            except Exception as e:
+            except (OSError, ValueError, protocol.ProtocolError) as e:
                 logger.error("SERVER:CLI", f"CLI error: {e}")
 
 if __name__ == "__main__":

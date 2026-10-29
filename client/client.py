@@ -31,10 +31,12 @@ class EmergencyClient:
         
         self.running = threading.Event()
         self.seen_seqs = set()
+        self.heartbeat_interval = config["protocol"].get("heartbeat_interval_s", 5)
 
     def start(self):
         self.running.set()
         threading.Thread(target=self._recv_loop, daemon=True).start()
+        threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         
         self._register()
         
@@ -59,7 +61,19 @@ class EmergencyClient:
             self.sock.sendto(msg, (self.server_ip, self.server_port))
             logger.info(f"CLIENT:{self.sub_id}", "Sent UNREGISTER to server")
         except OSError:
-            pass
+            logger.warn(f"CLIENT:{self.sub_id}", "Could not send UNREGISTER during shutdown")
+
+    def _heartbeat_loop(self):
+        while self.running.wait(self.heartbeat_interval) is False:
+            try:
+                self.sock.sendto(
+                    protocol.make_heartbeat(self.sub_id),
+                    (self.server_ip, self.server_port),
+                )
+            except OSError as exc:
+                if self.running.is_set():
+                    logger.error(f"CLIENT:{self.sub_id}", f"Heartbeat failed: {exc}")
+                return
 
     def _recv_loop(self):
         while self.running.is_set():
@@ -86,7 +100,10 @@ class EmergencyClient:
     def _handle_alert(self, seq, text, priority, receive_ts):
         # We always ACK, even if duplicate, because the server might have lost our previous ACK
         msg_bytes = protocol.make_ack(seq, self.sub_id, priority)
-        self.sock.sendto(msg_bytes, (self.server_ip, self.server_port))
+        try:
+            self.sock.sendto(msg_bytes, (self.server_ip, self.server_port))
+        except OSError as exc:
+            logger.error(f"CLIENT:{self.sub_id}", f"ACK failed for seq={seq}: {exc}")
         
         if seq not in self.seen_seqs:
             self.seen_seqs.add(seq)

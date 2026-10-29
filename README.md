@@ -192,11 +192,13 @@ mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "F
 ├── topology/
 │   └── topo.py              # Mininet topology definition
 ├── tests/
-│   └── test_protocol.py     # Unit + local E2E tests
+│   ├── test_protocol.py     # Protocol + local E2E tests
+│   └── test_gui.py          # Headless GUI validation tests
 ├── experiments/             # Experiment scripts (D2)
 ├── results/                 # Data & graphs (D2)
 ├── docs/                    # Extra documentation
 ├── run_demo.py              # Automated D1 demo
+├── gui.py                   # Tkinter emergency alert dashboard
 ├── plan.md                  # Full project plan
 └── requirements.txt
 ```
@@ -402,15 +404,64 @@ All tunables are centralized in `config/config.json`:
 - [x] Redundant two-path Mininet topology
 - [x] Baseline-ready (same application, no SDN priority)
 
-## Upcoming (D2)
+## GUI alert dashboard
 
-- [ ] OVS QoS queue configuration scripts
-- [ ] Dynamic congestion response
-- [ ] Link-failure detection & rerouting
-- [ ] Baseline vs. proposed experiments
-- [ ] CSV data collection pipeline
-- [ ] Matplotlib performance graphs
-- [ ] Full experiment matrix
+Start the notification server first, then run the dependency-free Tkinter
+dashboard from the repository root:
+
+```bash
+python3 gui.py
+```
+
+Enter the server IP, UDP port, priority, and message, then select **Send
+emergency alert**. Invalid addresses, ports, empty/oversized messages, invalid
+configuration, socket failures, and protocol errors are shown in the GUI
+instead of terminating the application. `Ctrl+Enter` also sends the alert.
+
+The controller now polls OpenFlow port counters, records congestion
+transitions at the configured threshold, and clears learned paths when a
+switch reports a link-down event. Emergency flows always use the configured
+high-priority queue (`emergency_queue_id`); ordinary traffic remains on the
+default queue. The redundant topology allows OVS/Ryu to relearn the surviving
+path after a link failure.
+
+## D2: Dynamic SDN demo
+
+The local experiment scripts validate the measurement and graph pipeline; the
+Mininet procedure below is the evidence for congestion and rerouting. The
+`--drop-every` option is a deterministic packet-loss test, not a claim that
+the local loopback test replaces the Mininet performance comparison.
+
+Run the lightweight, local measurement pipeline first:
+
+```bash
+python3 experiments/collect_results.py --condition baseline \
+  --output results/raw/d2_baseline.csv
+python3 experiments/collect_results.py --condition proposed --drop-every 5 \
+  --output results/raw/d2_proposed.csv
+python3 experiments/generate_graphs.py \
+  --input results/raw/d2_baseline.csv results/raw/d2_proposed.csv
+```
+
+For the Mininet D2 demonstration, start the controller and topology as
+described above. Configure queue 1 before generating traffic:
+
+```bash
+sudo python3 experiments/setup_qos.py
+```
+
+Then create background traffic and trigger a failure:
+
+```text
+mininet> hNoise1 iperf -s &
+mininet> hServer iperf -c 10.0.0.11 -u -b 20M -t 30 &
+mininet> link s1 s2 down
+mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "D2 TEST"
+mininet> link s1 s2 up
+```
+
+Observe `CONGESTION_ON`, `CONGESTION_OFF`, and `relearning paths` in the Ryu
+log. Use `ovs-ofctl dump-flows s1 -O OpenFlow13` to show the emergency flow.
 
 ## License
 

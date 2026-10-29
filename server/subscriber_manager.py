@@ -8,6 +8,9 @@ class SubscriberManager:
         self.lock = threading.Lock()
 
     def register(self, sub_id: str, ip: str, port: int, ts: float):
+        if not sub_id.strip():
+            logger.warn("SERVER:SUB", "Ignoring registration with an empty subscriber ID")
+            return
         with self.lock:
             self.subscribers[sub_id] = (ip, int(port), ts)
             logger.info("SERVER:SUB", f"Subscriber {sub_id} registered at {ip}:{port}")

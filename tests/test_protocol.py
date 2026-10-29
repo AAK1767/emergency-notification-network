@@ -60,6 +60,14 @@ class TestEncode:
         with pytest.raises(ValueError):
             protocol.encode(protocol.MSG_ALERT, 1, "URGENT", "x")
 
+    def test_invalid_sequence_raises_value_error(self):
+        with pytest.raises(ValueError):
+            protocol.encode(protocol.MSG_ALERT, -1, protocol.PRIO_HIGH, "x")
+
+    def test_empty_payload_raises_value_error(self):
+        with pytest.raises(ValueError):
+            protocol.encode(protocol.MSG_ALERT, 1, protocol.PRIO_HIGH, " ")
+
     def test_timestamp_close_to_now(self):
         before = time.time()
         raw = protocol.make_alert(1, "Test")
@@ -88,6 +96,14 @@ class TestDecode:
     def test_invalid_timestamp(self):
         with pytest.raises(protocol.ProtocolError):
             protocol.decode(b"ALERT|1|HIGH|not-a-float|payload")
+
+    def test_non_finite_timestamp(self):
+        with pytest.raises(protocol.ProtocolError):
+            protocol.decode(b"ALERT|1|HIGH|nan|payload")
+
+    def test_empty_payload(self):
+        with pytest.raises(protocol.ProtocolError):
+            protocol.decode(b"ALERT|1|HIGH|1700000000.0|")
 
     def test_invalid_priority(self):
         with pytest.raises(protocol.ProtocolError):
