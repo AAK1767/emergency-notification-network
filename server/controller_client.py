@@ -4,12 +4,14 @@ from common import logger
 
 class ControllerClient:
     def __init__(self, host, port):
+        # REST is optional: the UDP application still works if Ryu is offline.
         self.url = f"http://{host}:{port}/api/event"
         self._unavailable = False
         self._lock = threading.Lock()
     
     def post_event(self, event_type, data=None):
         """Send an event to the Ryu controller asynchronously."""
+        # Do not block alert delivery while waiting for the controller.
         with self._lock:
             if self._unavailable:
                 return

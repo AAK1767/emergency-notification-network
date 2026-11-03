@@ -16,6 +16,7 @@ from common import protocol
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestEncode:
+    # These tests verify messages created by the application.
     def test_encode_register_bytes(self):
         msg = protocol.make_register("C1")
         assert isinstance(msg, bytes)
@@ -81,6 +82,7 @@ class TestEncode:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestDecode:
+    # These tests verify that malformed network input is rejected safely.
     def test_wrong_field_count(self):
         with pytest.raises(protocol.ProtocolError):
             protocol.decode(b"ALERT|42|HIGH|1700000000.0")
@@ -129,6 +131,7 @@ class TestLocalE2E:
     Starts a minimal server and one client in the same process to verify the
     register → alert → ACK flow without Mininet/Ryu.
     """
+    # This small socket test proves REGISTER -> ALERT -> ACK without Mininet.
 
     def test_register_alert_ack(self):
         import socket

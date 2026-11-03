@@ -3,6 +3,7 @@
 
 import eventlet.wsgi
 
+# This compatibility shim keeps the pinned Ryu/Eventlet combination importable.
 # Ryu 4.34 imports this removed Eventlet sentinel unconditionally.
 if not hasattr(eventlet.wsgi, "ALREADY_HANDLED"):
     eventlet.wsgi.ALREADY_HANDLED = None

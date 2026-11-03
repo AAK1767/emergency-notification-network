@@ -22,6 +22,7 @@ from common import protocol, logger
 
 def send_alert(server_ip, server_port, message, priority=protocol.PRIO_HIGH):
     """Send a single alert trigger to the notification server."""
+    # The server replaces sequence zero with its global sequence number.
     if not message or not message.strip():
         raise ValueError("Alert message cannot be empty")
     if not 1 <= int(server_port) <= 65535:

@@ -61,13 +61,13 @@ class EmergencyTopo(Topo):
         delay : one-way propagation delay string (e.g. '5ms')
         """
 
-        # ── Switches ─────────────────────────────────────────────────────
+        # Switches form two routes between the server side and subscribers.
         s1 = self.addSwitch("s1", protocols="OpenFlow13", stp=True)
         s2 = self.addSwitch("s2", protocols="OpenFlow13", stp=True)
         s3 = self.addSwitch("s3", protocols="OpenFlow13", stp=True)
         s4 = self.addSwitch("s4", protocols="OpenFlow13", stp=True)
 
-        # ── Hosts ─────────────────────────────────────────────────────────
+        # Hosts represent the server, admin, subscribers, and noise sources.
         hServer = self.addHost("hServer", ip="10.0.0.1/24")
         hAdmin  = self.addHost("hAdmin",  ip="10.0.0.100/24")
         hC1     = self.addHost("hC1",     ip="10.0.0.2/24")
@@ -78,7 +78,7 @@ class EmergencyTopo(Topo):
 
         link_opts = dict(bw=bw, delay=delay, use_htb=True) if use_tc else {}
 
-        # ── Core links ────────────────────────────────────────────────────
+        # Core links create the primary and alternate paths.
         # Path A: s1 -> s2 -> s4
         self.addLink(s1, s2, **link_opts)
         self.addLink(s2, s4, **link_opts)

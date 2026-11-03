@@ -16,6 +16,7 @@ import math
 import time
 
 DELIMITER = "|"
+# Every UDP message has five fields separated by this character.
 
 # Message types
 MSG_REGISTER    = "REGISTER"
@@ -39,6 +40,7 @@ VALID_PRIORITIES = {PRIO_HIGH, PRIO_NORMAL, PRIO_LOW}
 
 def encode(msg_type: str, seq: int, priority: str, payload: str, timestamp: float = None) -> bytes:
     """Encode a message into bytes ready to send over UDP."""
+    # Validate before sending so bad data never enters the network.
     if msg_type not in VALID_TYPES:
         raise ValueError(f"Unknown message type: {msg_type}")
     if not isinstance(seq, int) or seq < 0:
@@ -85,6 +87,7 @@ class ProtocolError(Exception):
 
 def decode(data: bytes) -> Message:
     """Decode raw bytes into a Message.  Raises ProtocolError on failure."""
+    # UDP gives us bytes; turn them back into the structured message fields.
     try:
         raw = data.decode("utf-8").strip()
     except UnicodeDecodeError as exc:
@@ -126,12 +129,14 @@ def decode(data: bytes) -> Message:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def make_register(subscriber_id: str) -> bytes:
+    # Registration tells the server where this subscriber can receive alerts.
     return encode(MSG_REGISTER, 0, PRIO_NORMAL, subscriber_id)
 
 def make_unregister(subscriber_id: str) -> bytes:
     return encode(MSG_UNREGISTER, 0, PRIO_NORMAL, subscriber_id)
 
 def make_alert(seq: int, text: str, priority: str = PRIO_HIGH) -> bytes:
+    # Sequence zero means the server will assign the real alert number.
     return encode(MSG_ALERT, seq, priority, text)
 
 def make_ack(seq: int, subscriber_id: str, priority: str = PRIO_HIGH) -> bytes:

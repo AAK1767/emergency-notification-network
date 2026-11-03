@@ -25,6 +25,7 @@ def run_trial(count, drop_every):
         raise ValueError("count must be at least 1")
     if drop_every < 0:
         raise ValueError("drop_every cannot be negative")
+    # Store only delivered packets; missing sequences become loss in the CSV.
     received = []
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -34,6 +35,7 @@ def run_trial(count, drop_every):
     address = server.getsockname()
 
     def receive():
+        # This local receiver imitates a subscriber and returns ACKs.
         for _ in range(count):
             try:
                 data, peer = server.recvfrom(4096)
@@ -48,6 +50,7 @@ def run_trial(count, drop_every):
     thread = threading.Thread(target=receive, daemon=True)
     thread.start()
     for seq in range(1, count + 1):
+        # Send numbered alerts so latency and delivery can be measured per packet.
         client.sendto(protocol.make_alert(seq, "experiment"), address)
     thread.join(timeout=max(2, count * 0.1))
     client.close()

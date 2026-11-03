@@ -6,6 +6,7 @@ from gui import validate_destination
 
 
 def test_gui_accepts_valid_alert():
+    # Valid form data should be normalized and returned for sending.
     assert validate_destination("127.0.0.1", "9999", "Fire in block A") == (
         "127.0.0.1", 9999, "Fire in block A"
     )
@@ -20,5 +21,6 @@ def test_gui_accepts_valid_alert():
     ],
 )
 def test_gui_rejects_invalid_alert(host, port, message):
+    # Invalid form data must be stopped before a socket is opened.
     with pytest.raises(ValueError):
         validate_destination(host, port, message)

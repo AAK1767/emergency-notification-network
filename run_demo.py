@@ -41,6 +41,8 @@ from topology.topo import EmergencyTopo
 
 
 def run_demo(use_tc=True):
+    # This launcher creates the topology, starts application processes, and
+    # leaves the user at the Mininet prompt for further demonstrations.
     setLogLevel("info")
 
     topo = EmergencyTopo(bw=10, delay="5ms", use_tc=use_tc)
@@ -81,13 +83,13 @@ def run_demo(use_tc=True):
     python_cmd = shlex.quote(python)
     project_cmd = shlex.quote(project_dir)
 
-    # 0) Verify connectivity after allowing Mininet/OVS startup to converge
+    # Verify connectivity after allowing Mininet/OVS startup to converge.
     print("\n[DEMO] Running pingall (startup convergence)...")
     net.pingAll()
     print("\n[DEMO] Running pingall again (final connectivity check)...")
     net.pingAll()
 
-    # 1) Start the server
+    # Start the notification server inside the server host namespace.
     print("\n[DEMO] Starting Emergency Server on hServer (10.0.0.1)...")
     hServer.cmd(
         f"cd {project_cmd} && {python_cmd} server/server.py "
@@ -95,7 +97,7 @@ def run_demo(use_tc=True):
     )
     time.sleep(2)
 
-    # 2) Start clients
+    # Start three subscriber processes inside their host namespaces.
     print("[DEMO] Starting subscribers C1, C2, C3...")
     hC1.cmd(
         f"cd {project_cmd} && {python_cmd} client/client.py "
@@ -116,7 +118,7 @@ def run_demo(use_tc=True):
     )
     time.sleep(2)
 
-    # 3) Send an alert from the admin host
+    # Send one alert from the separate admin host.
     print("\n[DEMO] Sending emergency alert...")
     hAdmin = net.get("hAdmin")
     hAdmin.cmd(

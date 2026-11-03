@@ -9,6 +9,7 @@ import pandas as pd
 
 
 def main():
+    # Combine conditions first so the same graph can compare baseline/proposed.
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", nargs="+", default=["results/raw/d2_results.csv"])
     parser.add_argument("--output", default="results/graphs/d2_summary.png")
@@ -22,6 +23,7 @@ def main():
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     axes = summary.plot.bar(
+        # Two subplots keep latency and delivery percentage easy to read.
         y=["latency_ms", "delivery_percent"],
         subplots=True,
         legend=False,

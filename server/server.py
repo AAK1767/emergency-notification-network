@@ -20,6 +20,7 @@ def load_config():
 
 class EmergencyServer:
     def __init__(self, config):
+        # The server listens for all application messages on one UDP socket.
         self.config = config
         self.port = config["server"]["port"]
         self.host = config["server"]["host"]
@@ -42,6 +43,7 @@ class EmergencyServer:
         self.running = threading.Event()
 
     def start(self):
+        # Receive handling and admin input run independently of the main wait loop.
         self.running.set()
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._admin_cli, daemon=True).start()
@@ -58,6 +60,7 @@ class EmergencyServer:
 
     def _recv_loop(self):
         while self.running.is_set():
+            # Every datagram is decoded before its message type is handled.
             try:
                 data, addr = self.sock.recvfrom(4096)
                 if not data:
@@ -89,6 +92,8 @@ class EmergencyServer:
         } and not sub_id:
             logger.warn("SERVER", f"Ignoring {msg.msg_type} with an empty subscriber ID")
             return
+
+        # Registration stores the sender address; ACKs are matched by ID/sequence.
         
         if msg.msg_type == protocol.MSG_REGISTER:
             self.sub_mgr.register(sub_id, ip, port, receive_ts)

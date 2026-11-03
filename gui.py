@@ -121,6 +121,7 @@ class DemoConsole:
         self.output.pack(fill=tk.BOTH, expand=False, padx=8, pady=(0, 8))
 
     def _build_demo_tab(self):
+        # Live Demo controls the real local UDP server and subscriber processes.
         tab = self.demo_tab
         tab.columnconfigure(1, weight=1)
         tab.rowconfigure(8, weight=1)
@@ -153,6 +154,7 @@ class DemoConsole:
         self._button(scenarios, "Show server/client logs", self._show_processes, 2)
 
     def _build_d2_tab(self):
+        # D2 controls run measurements and prepare commands for Mininet/OVS.
         tab = self.d2_tab
         tab.columnconfigure(1, weight=1)
         ttk.Label(tab, text="D2 controls",
@@ -181,6 +183,7 @@ class DemoConsole:
         ), wraplength=800).grid(row=7, column=0, columnspan=3, sticky="w", pady=12)
 
     def _build_explain_tab(self):
+        # This tab gives a short explanation while the user operates the demo.
         text = (
             "LIVE DEMO\n"
             "Start server -> start C1-C3 -> send alert. The server broadcasts a "
@@ -268,6 +271,7 @@ class DemoConsole:
             self.events.put(("INFO", f"Alert sent to {host}:{port} ({priority})"))
 
     def _start_process(self, name, command):
+        # Keep child processes visible and capture their output in the GUI.
         try:
             process = subprocess.Popen(
                 command, cwd=ROOT, stdin=subprocess.DEVNULL,
@@ -282,6 +286,7 @@ class DemoConsole:
         self._log("INFO", f"Started {name}")
 
     def _read_process(self, name, process):
+        # A reader thread prevents a busy server/client from blocking the GUI.
         try:
             for line in process.stdout:
                 self.events.put(("LOG", f"[{name}] {line.rstrip()}"))
@@ -362,6 +367,7 @@ class DemoConsole:
         self.events.put(("INFO", f"Command exited with code {result.returncode}"))
 
     def _poll_events(self):
+        # Tkinter widgets are updated only on the main thread.
         try:
             while True:
                 kind, text = self.events.get_nowait()

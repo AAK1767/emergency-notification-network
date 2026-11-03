@@ -5,6 +5,7 @@ from server.controller_client import ControllerClient
 
 class AlertManager:
     def __init__(self, sender_socket, ack_timeout, max_retries, controller=None):
+        # This object owns alert numbering and ACK/retry state.
         self.sock = sender_socket
         self.ack_timeout_ms = ack_timeout
         self.max_retries = max_retries
@@ -22,6 +23,7 @@ class AlertManager:
 
     def broadcast_alert(self, text, subscribers, priority=protocol.PRIO_HIGH):
         with self.lock:
+            # One sequence number identifies this alert for every subscriber.
             seq = self.seq_counter
             self.seq_counter += 1
             
@@ -44,6 +46,7 @@ class AlertManager:
             
             if pending:
                 self.pending_acks[seq] = pending
+                # Retry in the background so the server can receive other UDP messages.
                 t = threading.Thread(target=self._retry_loop, args=(seq,), daemon=True)
                 t.start()
             
@@ -65,6 +68,7 @@ class AlertManager:
                     logger.debug("SERVER:ALERT", f"All ACKs received for ALERT seq={seq}")
 
     def _retry_loop(self, seq):
+        # A missing ACK causes the same sequence number to be sent again.
         timeout_s = self.ack_timeout_ms / 1000.0
         while True:
             time.sleep(timeout_s)

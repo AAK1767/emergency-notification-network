@@ -30,6 +30,7 @@ _current_level = 0  # default: show everything
 
 # Optional file handle for persisting logs
 _log_file = None
+# All modules use these helpers so terminal and file logs look consistent.
 
 
 def set_level(level: str):

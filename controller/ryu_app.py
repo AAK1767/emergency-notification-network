@@ -55,6 +55,7 @@ class EmergencyController(app_manager.RyuApp):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Load the same configuration used by the application and topology.
         self.cfg = _load_config()
 
         ctrl = self.cfg.get("controller", {})
@@ -100,6 +101,7 @@ class EmergencyController(app_manager.RyuApp):
         self._install_base_flows(dp)
 
     def _install_base_flows(self, dp):
+        # Normal traffic uses OVS normal forwarding; emergency traffic gets queue 1.
         ofp = dp.ofproto
         parser = dp.ofproto_parser
         match = parser.OFPMatch()
@@ -124,6 +126,7 @@ class EmergencyController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def packet_in_handler(self, ev):
+        # Learn source locations and forward the packet toward the known destination.
         msg = ev.msg
         dp = msg.datapath
         ofp = dp.ofproto
@@ -191,6 +194,7 @@ class EmergencyController(app_manager.RyuApp):
 
     @set_ev_cls(ofp_event.EventOFPPortStatsReply, MAIN_DISPATCHER)
     def port_stats_reply_handler(self, ev):
+        # Comparing two counter snapshots gives the traffic rate on each port.
         dp = ev.msg.datapath
         dpid = dp.id
         now = time.time()
@@ -238,6 +242,7 @@ class EmergencyController(app_manager.RyuApp):
     @set_ev_cls(ofp_event.EventOFPPortStatus, MAIN_DISPATCHER)
     def port_status_handler(self, ev):
         """Forget paths using a failed port so the next packet is relearned."""
+        # Clearing stale paths makes the redundant route available after failure.
         msg = ev.msg
         reason = msg.reason
         desc = msg.desc
@@ -293,6 +298,7 @@ class EmergencyController(app_manager.RyuApp):
 
     def _stats_poller(self):
         while True:
+            # Ask every connected switch for fresh counters.
             for dpid, dp in list(self._datapaths.items()):
                 parser = dp.ofproto_parser
                 req = parser.OFPPortStatsRequest(dp, 0, dp.ofproto.OFPP_ANY)

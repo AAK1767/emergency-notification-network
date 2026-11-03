@@ -3,6 +3,7 @@ from common import logger
 
 class SubscriberManager:
     def __init__(self):
+        # Maps subscriber ID to (IP, UDP port, last heartbeat time).
         # Dictionary mapping subscriber_id -> (ip, port, last_seen_timestamp)
         self.subscribers = {}
         self.lock = threading.Lock()
@@ -30,5 +31,6 @@ class SubscriberManager:
 
     def get_all(self):
         """Returns a list of (subscriber_id, (ip, port, last_seen))."""
+        # Return a copy so callers cannot change the registry without the lock.
         with self.lock:
             return list(self.subscribers.items())

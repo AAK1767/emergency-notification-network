@@ -19,6 +19,7 @@ def load_config():
 
 class EmergencyClient:
     def __init__(self, subscriber_id, server_ip, server_port, config):
+        # Each subscriber has one UDP socket used for register, alerts, ACKs, and heartbeats.
         self.sub_id = subscriber_id
         self.config = config
         
@@ -35,6 +36,7 @@ class EmergencyClient:
 
     def start(self):
         self.running.set()
+        # Listening and heartbeat threads keep the subscriber responsive.
         threading.Thread(target=self._recv_loop, daemon=True).start()
         threading.Thread(target=self._heartbeat_loop, daemon=True).start()
         
@@ -64,6 +66,7 @@ class EmergencyClient:
             logger.warn(f"CLIENT:{self.sub_id}", "Could not send UNREGISTER during shutdown")
 
     def _heartbeat_loop(self):
+        # Heartbeats let the server know that a registered subscriber is still alive.
         while self.running.wait(self.heartbeat_interval) is False:
             try:
                 self.sock.sendto(
@@ -99,6 +102,7 @@ class EmergencyClient:
                 
     def _handle_alert(self, seq, text, priority, receive_ts):
         # We always ACK, even if duplicate, because the server might have lost our previous ACK
+        # The seen set prevents a retransmitted alert from being shown twice.
         msg_bytes = protocol.make_ack(seq, self.sub_id, priority)
         try:
             self.sock.sendto(msg_bytes, (self.server_ip, self.server_port))

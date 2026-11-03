@@ -8,10 +8,12 @@ import sys
 
 
 def run(*args):
+    # check=True turns an OVS failure into a visible error instead of continuing.
     return subprocess.run(args, check=True, capture_output=True, text=True)
 
 
 def configure_port(port, link_rate, emergency_rate):
+    # Queue 1 reserves bandwidth for packets classified as emergency.
     queue = run(
         "ovs-vsctl", "--", "--id=@q1", "create", "Queue",
         f"other-config:min-rate={emergency_rate}",
@@ -42,6 +44,7 @@ def main():
     configured = 0
     for switch in args.switches:
         try:
+            # Apply the same queue policy to every port of each selected switch.
             ports = run("ovs-vsctl", "list-ports", switch).stdout.splitlines()
             for port in ports:
                 configure_port(port, link_rate, emergency_rate)
