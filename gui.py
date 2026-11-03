@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import shutil
 from tkinter import messagebox, ttk
 
 from common import protocol
@@ -76,6 +77,7 @@ class DemoConsole:
         self.root.minsize(980, 680)
         self.events = queue.Queue()
         self.processes = {}
+        self.mininet_process = None
         self.closing = False
 
         try:
@@ -178,9 +180,43 @@ class DemoConsole:
         self._button(sdn, "Link s1-s2 up", lambda: self._show_mininet_command("link s1 s2 up"), 2)
         self._button(sdn, "Show flow command", self._show_flow_command, 3)
         ttk.Label(tab, text=(
-            "The SDN buttons require Ubuntu/WSL with Mininet and OVS. "
-            "On Windows they report the missing environment instead of freezing."
+            "Use this tab as the main D2 control surface. It launches the "
+            "controller/topology and sends commands to the live Mininet CLI. "
+            "The normal CLI remains available as a backup."
         ), wraplength=800).grid(row=7, column=0, columnspan=3, sticky="w", pady=12)
+
+        network = ttk.LabelFrame(tab, text="Network demo session", padding=8)
+        network.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        for column in range(4):
+            network.columnconfigure(column, weight=1)
+        self._button(network, "Start Ryu", self._start_ryu, 0)
+        self._button(network, "Start Mininet", self._start_mininet, 1)
+        self._button(network, "Start D1 services", self._start_mininet_services, 2)
+        self._button(network, "Stop network", self._stop_network, 3)
+
+        actions = ttk.LabelFrame(tab, text="D2 actions", padding=8)
+        actions.grid(row=9, column=0, columnspan=3, sticky="ew")
+        for column in range(4):
+            actions.columnconfigure(column, weight=1)
+        self._button(actions, "Setup QoS", self._setup_qos, 0)
+        self._button(actions, "Create congestion", self._create_congestion, 1)
+        self._button(actions, "Link s1-s2 down", lambda: self._send_mininet("link s1 s2 down"), 2)
+        self._button(actions, "Link s1-s2 up", lambda: self._send_mininet("link s1 s2 up"), 3)
+
+        inspect = ttk.LabelFrame(tab, text="Mininet command console", padding=8)
+        inspect.grid(row=10, column=0, columnspan=3, sticky="ew")
+        inspect.columnconfigure(0, weight=1)
+        self.mininet_command = tk.StringVar()
+        ttk.Entry(inspect, textvariable=self.mininet_command).grid(
+            row=0, column=0, sticky="ew", padx=(0, 8))
+        ttk.Button(inspect, text="Run command",
+                   command=lambda: self._send_mininet(self.mininet_command.get())).grid(
+                       row=0, column=1)
+        ttk.Button(inspect, text="Show flows",
+                   command=lambda: self._send_mininet("sh ovs-ofctl dump-flows s1 -O OpenFlow13")).grid(
+                       row=0, column=2, padx=(8, 0))
+        ttk.Label(inspect, text="Examples: pingall, dump, link s1 s2 down").grid(
+            row=1, column=0, columnspan=3, sticky="w", pady=(5, 0))
 
     def _build_explain_tab(self):
         # This tab gives a short explanation while the user operates the demo.
@@ -240,6 +276,87 @@ class DemoConsole:
         self._start_server()
         self.root.after(1200, self._start_clients)
         self.root.after(3000, self._send)
+
+    def _start_ryu(self):
+        if os.name == "nt":
+            self._error("Ryu/Mininet network controls must run in Ubuntu or WSL.")
+            return
+        if "ryu" in self.processes:
+            self._log("INFO", "Ryu is already running")
+            return
+        self._start_process(
+            "ryu",
+            [sys.executable, "controller/run_ryu.py", "controller/ryu_app.py",
+             "--observe-links", "--verbose"],
+        )
+
+    def _start_mininet(self):
+        if os.name == "nt":
+            self._error("Mininet controls must run in Ubuntu or WSL.")
+            return
+        if self.mininet_process and self.mininet_process.poll() is None:
+            self._log("INFO", "Mininet is already running")
+            return
+        if shutil.which("sudo") is None:
+            self._error("sudo was not found. Start Mininet manually from the CLI.")
+            return
+        command = ["sudo", "-n", "python3", "topology/topo.py", "--no-tc"]
+        try:
+            self.mininet_process = subprocess.Popen(
+                command, cwd=ROOT, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+        except (OSError, ValueError) as exc:
+            self._error(f"Could not start Mininet: {exc}")
+            return
+        threading.Thread(
+            target=self._read_mininet, args=(self.mininet_process,), daemon=True
+        ).start()
+        self._log("INFO", "Mininet is starting. Wait for the mininet> prompt.")
+
+    def _read_mininet(self, process):
+        try:
+            for line in process.stdout:
+                self.events.put(("LOG", f"[mininet] {line.rstrip()}"))
+        except OSError as exc:
+            self.events.put(("ERROR", f"Mininet output failed: {exc}"))
+        finally:
+            self.events.put(("INFO", "Mininet stopped"))
+            self.mininet_process = None
+
+    def _send_mininet(self, command):
+        command = command.strip()
+        if not command:
+            self._error("Enter a Mininet command first.")
+            return
+        process = self.mininet_process
+        if not process or process.poll() is not None or process.stdin is None:
+            self._error("Mininet is not running. Click Start Mininet first.")
+            return
+        try:
+            process.stdin.write(command + "\n")
+            process.stdin.flush()
+            self._log("COMMAND", f"mininet> {command}")
+        except (OSError, ValueError) as exc:
+            self._error(f"Could not send Mininet command: {exc}")
+
+    def _start_mininet_services(self):
+        commands = [
+            "pingall",
+            "hServer sh -c 'python3 server/server.py > /tmp/gui-d2-server.log 2>&1' &",
+            "hC1 sh -c 'python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C1.log 2>&1' &",
+            "hC2 sh -c 'python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C2.log 2>&1' &",
+            "hC3 sh -c 'python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C3.log 2>&1' &",
+        ]
+        for command in commands:
+            self._send_mininet(command)
+        self._log("INFO", "D1 services started inside Mininet; D2 controls are ready.")
+
+    def _create_congestion(self):
+        self._send_mininet("hNoise1 iperf -s &")
+        self._send_mininet("hServer iperf -c 10.0.0.11 -u -b 20M -t 30 &")
+        self._log("INFO", "Background traffic started; watch the Ryu output for CONGESTION_ON.")
 
     def _run_retransmission(self):
         self._log("INFO", "Starting subscribers; stop one client before sending the test alert")
@@ -304,6 +421,19 @@ class DemoConsole:
                 self._log("INFO", f"Stopping {name}")
         self.processes.clear()
 
+    def _stop_network(self):
+        if self.mininet_process and self.mininet_process.poll() is None:
+            try:
+                if self.mininet_process.stdin:
+                    self.mininet_process.stdin.write("exit\n")
+                    self.mininet_process.stdin.flush()
+                self.mininet_process.terminate()
+            except OSError as exc:
+                self._log("ERROR", f"Could not stop Mininet cleanly: {exc}")
+        self.mininet_process = None
+        self._stop_all()
+        self._log("INFO", "Network processes stopped. Run 'sudo mn -c' if cleanup is needed.")
+
     def _show_processes(self):
         if not self.processes:
             self._log("INFO", "No local processes are running")
@@ -336,7 +466,7 @@ class DemoConsole:
         ])
 
     def _setup_qos(self):
-        self._run_command([sys.executable, "experiments/setup_qos.py"])
+        self._run_command(["sudo", "-n", "python3", "experiments/setup_qos.py"])
 
     def _show_flow_command(self):
         self._log("COMMAND", "mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13")
@@ -398,7 +528,7 @@ class DemoConsole:
 
     def _close(self):
         self.closing = True
-        self._stop_all()
+        self._stop_network()
         self.root.destroy()
 
 

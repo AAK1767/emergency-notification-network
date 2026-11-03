@@ -417,11 +417,13 @@ processes, send alerts, run a local end-to-end demo, and show live server and
 client logs. The retransmission scenario starts the processes and lets you
 stop a subscriber before sending an alert.
 
-The **D2 Controls** tab runs CSV collection, graph generation, both experiment
-conditions, and QoS setup. It also displays the exact Mininet commands for
-link failure and flow inspection; run those commands in the active
-`mininet>` terminal. Invalid input, missing tools, socket failures, and
-subprocess errors are shown in the output panel instead of freezing the GUI.
+The **D2 Controls** tab is the main D2 control surface. It can launch Ryu and
+Mininet, start the server/subscribers inside Mininet, configure QoS, create
+background congestion, bring the `s1-s2` link down/up, inspect flows, collect
+CSV data, and generate graphs. The command console can run any additional
+Mininet command. The normal `mininet>` CLI remains available as a backup.
+Invalid input, missing tools, socket failures, and subprocess errors are shown
+in the output panel instead of freezing the GUI.
 
 The **What is happening?** tab explains the alert, ACK, retransmission,
 congestion, QoS, rerouting, and measurement behavior while the demo runs.
