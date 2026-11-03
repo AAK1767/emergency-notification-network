@@ -118,9 +118,23 @@ class DemoConsole:
         bottom = ttk.Frame(self.root, padding=(8, 0, 8, 8))
         bottom.pack(fill=tk.X)
         ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Clear output", command=self._clear_output).pack(side=tk.RIGHT)
-        self.output = tk.Text(self.root, height=10, state=tk.DISABLED, wrap=tk.WORD)
-        self.output.pack(fill=tk.BOTH, expand=False, padx=8, pady=(0, 8))
+        ttk.Button(bottom, text="Clear logs", command=self._clear_output).pack(side=tk.RIGHT)
+
+        # Keep controller, network, application, and experiment output separate.
+        self.logs = ttk.Notebook(self.root)
+        self.logs.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self.log_widgets = {}
+        for channel in ("General", "Ryu", "Mininet", "Application", "Experiments"):
+            panel = ttk.Frame(self.logs, padding=4)
+            panel.rowconfigure(0, weight=1)
+            panel.columnconfigure(0, weight=1)
+            widget = tk.Text(panel, state=tk.DISABLED, wrap=tk.WORD)
+            widget.grid(row=0, column=0, sticky="nsew")
+            scrollbar = ttk.Scrollbar(panel, orient=tk.VERTICAL, command=widget.yview)
+            scrollbar.grid(row=0, column=1, sticky="ns")
+            widget.configure(yscrollcommand=scrollbar.set)
+            self.logs.add(panel, text=channel)
+            self.log_widgets[channel] = widget
 
     def _build_demo_tab(self):
         # Live Demo controls the real local UDP server and subscriber processes.
@@ -340,11 +354,11 @@ class DemoConsole:
     def _read_mininet(self, process):
         try:
             for line in process.stdout:
-                self.events.put(("LOG", f"[mininet] {line.rstrip()}"))
+                self.events.put(("LOG", f"{line.rstrip()}", "Mininet"))
         except OSError as exc:
-            self.events.put(("ERROR", f"Mininet output failed: {exc}"))
+            self.events.put(("ERROR", f"Mininet output failed: {exc}", "Mininet"))
         finally:
-            self.events.put(("INFO", "Mininet stopped"))
+            self.events.put(("INFO", "Mininet stopped", "Mininet"))
             self.mininet_process = None
 
     def _send_mininet(self, command):
@@ -359,7 +373,7 @@ class DemoConsole:
         try:
             process.stdin.write(command + "\n")
             process.stdin.flush()
-            self._log("COMMAND", f"mininet> {command}")
+            self._log("COMMAND", f"mininet> {command}", "Mininet")
         except (OSError, ValueError) as exc:
             self._error(f"Could not send Mininet command: {exc}")
 
@@ -405,9 +419,9 @@ class DemoConsole:
         try:
             send_alert(host, port, message, priority)
         except (OSError, ValueError, protocol.ProtocolError) as exc:
-            self.events.put(("ERROR", f"Alert failed: {exc}"))
+            self.events.put(("ERROR", f"Alert failed: {exc}", "Application"))
         else:
-            self.events.put(("INFO", f"Alert sent to {host}:{port} ({priority})"))
+            self.events.put(("INFO", f"Alert sent to {host}:{port} ({priority})", "Application"))
 
     def _start_process(self, name, command):
         # Keep child processes visible and capture their output in the GUI.
@@ -421,19 +435,22 @@ class DemoConsole:
             self._error(f"Could not start {name}: {exc}")
             return
         self.processes[name] = process
-        threading.Thread(target=self._read_process, args=(name, process), daemon=True).start()
+        channel = "Ryu" if name == "ryu" else "Application"
+        threading.Thread(
+            target=self._read_process, args=(name, process, channel), daemon=True
+        ).start()
         self._log("INFO", f"Started {name}")
 
-    def _read_process(self, name, process):
+    def _read_process(self, name, process, channel):
         # A reader thread prevents a busy server/client from blocking the GUI.
         try:
             for line in process.stdout:
-                self.events.put(("LOG", f"[{name}] {line.rstrip()}"))
+                self.events.put(("LOG", line.rstrip(), channel))
         except (OSError, ValueError) as exc:
-            self.events.put(("ERROR", f"{name} log reader failed: {exc}"))
+            self.events.put(("ERROR", f"{name} log reader failed: {exc}", channel))
         finally:
             code = process.poll()
-            self.events.put(("INFO", f"{name} stopped (exit={code})"))
+            self.events.put(("INFO", f"{name} stopped (exit={code})", channel))
             self.events.put(("PROCESS_DONE", name))
 
     def _stop_all(self):
@@ -505,16 +522,16 @@ class DemoConsole:
         self._log("COMMAND", f"mininet> {command}")
         self._log("INFO", "Run this command in the active Mininet CLI.")
 
-    def _run_command(self, command, stdin_data=None):
+    def _run_command(self, command, stdin_data=None, channel="Experiments"):
         if isinstance(command, str):
             command = command.split()
         threading.Thread(
             target=self._command_worker,
-            args=(command, stdin_data),
+            args=(command, stdin_data, channel),
             daemon=True,
         ).start()
 
-    def _command_worker(self, command, stdin_data=None):
+    def _command_worker(self, command, stdin_data=None, channel="Experiments"):
         try:
             result = subprocess.run(
                 command, cwd=ROOT, input=(f"{stdin_data}\n" if stdin_data is not None else None),
@@ -522,39 +539,43 @@ class DemoConsole:
                 check=False,
             )
         except (OSError, subprocess.SubprocessError) as exc:
-            self.events.put(("ERROR", f"Command failed to start: {exc}"))
+            self.events.put(("ERROR", f"Command failed to start: {exc}", channel))
             return
         output = (result.stdout + result.stderr).strip()
         if output:
             for line in output.splitlines():
-                self.events.put(("LOG", f"[command] {line}"))
-        self.events.put(("INFO", f"Command exited with code {result.returncode}"))
+                self.events.put(("LOG", line, channel))
+        self.events.put(("INFO", f"Command exited with code {result.returncode}", channel))
 
     def _poll_events(self):
         # Tkinter widgets are updated only on the main thread.
         try:
             while True:
-                kind, text = self.events.get_nowait()
+                event = self.events.get_nowait()
+                kind, text = event[:2]
                 if kind == "PROCESS_DONE":
                     self.processes.pop(text, None)
                     continue
-                self._log(kind, text)
+                channel = event[2] if len(event) > 2 else "General"
+                self._log(kind, text, channel)
                 self.status.set(text)
         except queue.Empty:
             pass
         if not self.closing:
             self.root.after(100, self._poll_events)
 
-    def _log(self, level, text):
-        self.output.configure(state=tk.NORMAL)
-        self.output.insert(tk.END, f"[{level}] {text}\n")
-        self.output.see(tk.END)
-        self.output.configure(state=tk.DISABLED)
+    def _log(self, level, text, channel="General"):
+        widget = self.log_widgets.get(channel, self.log_widgets["General"])
+        widget.configure(state=tk.NORMAL)
+        widget.insert(tk.END, f"[{level}] {text}\n")
+        widget.see(tk.END)
+        widget.configure(state=tk.DISABLED)
 
     def _clear_output(self):
-        self.output.configure(state=tk.NORMAL)
-        self.output.delete("1.0", tk.END)
-        self.output.configure(state=tk.DISABLED)
+        for widget in self.log_widgets.values():
+            widget.configure(state=tk.NORMAL)
+            widget.delete("1.0", tk.END)
+            widget.configure(state=tk.DISABLED)
 
     def _error(self, text):
         self._log("ERROR", text)
