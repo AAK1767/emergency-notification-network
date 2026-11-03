@@ -41,11 +41,18 @@ def run_trial(count, drop_every):
                 data, peer = server.recvfrom(4096)
             except socket.timeout:
                 return
-            message = protocol.decode(data)
+            try:
+                message = protocol.decode(data)
+            except protocol.ProtocolError:
+                # Ignore malformed test packets rather than killing the worker.
+                continue
             if drop_every and message.seq % drop_every == 0:
                 continue
             received.append((message.seq, time.time() - message.timestamp))
-            server.sendto(protocol.make_ack(message.seq, "experiment"), peer)
+            try:
+                server.sendto(protocol.make_ack(message.seq, "experiment"), peer)
+            except OSError:
+                return
 
     thread = threading.Thread(target=receive, daemon=True)
     thread.start()
@@ -66,7 +73,10 @@ def main():
     parser.add_argument("--condition", default="baseline")
     args = parser.parse_args()
 
-    rows = run_trial(args.count, args.drop_every)
+    try:
+        rows = run_trial(args.count, args.drop_every)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as handle:

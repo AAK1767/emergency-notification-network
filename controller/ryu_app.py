@@ -44,8 +44,8 @@ def _load_config():
     try:
         with open(config_path) as f:
             return json.load(f)
-    except FileNotFoundError:
-        LOG.warning("config.json not found, using defaults")
+    except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
+        LOG.warning("Could not load config.json (%s); using defaults", exc)
         return {}
 
 
