@@ -425,7 +425,8 @@ Mininet command. The normal `mininet>` CLI remains available as a backup.
 When starting Mininet or configuring QoS, the GUI asks for the WSL/Ubuntu
 sudo password in a masked dialog because those operations require root
 privileges. The password is passed only to that command and is not written to
-the activity log.
+the activity log. Starting Mininet also runs `mn -c` first to remove stale
+interfaces left by an interrupted topology run.
 Invalid input, missing tools, socket failures, and subprocess errors are shown
 in the output panel instead of freezing the GUI.
 

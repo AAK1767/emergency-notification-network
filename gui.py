@@ -317,7 +317,12 @@ class DemoConsole:
         password = self._ask_sudo_password()
         if password is None:
             return
-        command = ["sudo", "-S", "-p", "", "python3", "topology/topo.py", "--no-tc"]
+        # Clean stale veth pairs before starting; interrupted Mininet runs can
+        # otherwise fail with "RTNETLINK answers: File exists".
+        command = [
+            "sudo", "-S", "-p", "", "bash", "-lc",
+            "mn -c && exec python3 topology/topo.py --no-tc",
+        ]
         try:
             self.mininet_process = subprocess.Popen(
                 command, cwd=ROOT, stdin=subprocess.PIPE,
@@ -340,7 +345,7 @@ class DemoConsole:
         threading.Thread(
             target=self._read_mininet, args=(self.mininet_process,), daemon=True
         ).start()
-        self._log("INFO", "Mininet is starting. Wait for the mininet> prompt.")
+        self._log("INFO", "Cleaning stale Mininet state, then starting topology...")
 
     def _ask_sudo_password(self):
         """Ask once without logging or retaining the password."""
