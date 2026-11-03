@@ -404,19 +404,27 @@ All tunables are centralized in `config/config.json`:
 - [x] Redundant two-path Mininet topology
 - [x] Baseline-ready (same application, no SDN priority)
 
-## GUI alert dashboard
+## GUI demo console
 
-Start the notification server first, then run the dependency-free Tkinter
-dashboard from the repository root:
+Run the dependency-free Tkinter demo console from the repository root:
 
 ```bash
 python3 gui.py
 ```
 
-Enter the server IP, UDP port, priority, and message, then select **Send
-emergency alert**. Invalid addresses, ports, empty/oversized messages, invalid
-configuration, socket failures, and protocol errors are shown in the GUI
-instead of terminating the application. `Ctrl+Enter` also sends the alert.
+The **Live Demo** tab can start the local server and C1-C3 subscriber
+processes, send alerts, run a local end-to-end demo, and show live server and
+client logs. The retransmission scenario starts the processes and lets you
+stop a subscriber before sending an alert.
+
+The **D2 Controls** tab runs CSV collection, graph generation, both experiment
+conditions, and QoS setup. It also displays the exact Mininet commands for
+link failure and flow inspection; run those commands in the active
+`mininet>` terminal. Invalid input, missing tools, socket failures, and
+subprocess errors are shown in the output panel instead of freezing the GUI.
+
+The **What is happening?** tab explains the alert, ACK, retransmission,
+congestion, QoS, rerouting, and measurement behavior while the demo runs.
 
 The controller now polls OpenFlow port counters, records congestion
 transitions at the configured threshold, and clears learned paths when a

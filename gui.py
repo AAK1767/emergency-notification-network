@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Simple emergency alert dashboard.
+"""Interactive demo console for the Emergency Notification Network.
 
-Run from the repository root with:
-    python gui.py
-
-The dashboard is an admin client. It does not replace the UDP server or
-subscriber clients; it sends the same ALERT messages as send_alert.py.
+Run from the repository root with ``python gui.py``.  The console can run a
+local server/client demo without Mininet and can execute or display the D2
+Mininet commands when it is run on the Linux/WSL networking host.
 """
 
 import ipaddress
@@ -13,6 +11,8 @@ import json
 import os
 import queue
 import socket
+import subprocess
+import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
@@ -25,13 +25,11 @@ CONFIG_PATH = os.path.join(ROOT, "config", "config.json")
 
 
 def load_defaults():
-    """Load GUI defaults while returning actionable errors to the caller."""
     try:
         with open(CONFIG_PATH, encoding="utf-8") as handle:
             config = json.load(handle)
         server = config["server"]
         host = str(server["host"])
-        # 0.0.0.0 is a bind address, not a destination address.
         if host in {"0.0.0.0", "::"}:
             host = "127.0.0.1" if host == "0.0.0.0" else "::1"
         return host, int(server["port"])
@@ -40,7 +38,6 @@ def load_defaults():
 
 
 def validate_destination(host, port_text, message):
-    """Validate form values and return an IPv4/IPv6 host and integer port."""
     host = host.strip()
     message = message.strip()
     if not host:
@@ -63,100 +60,202 @@ def validate_destination(host, port_text, message):
 
 
 def send_alert(host, port, message, priority):
-    """Send one alert and close the socket reliably."""
     payload = protocol.make_alert(0, message, priority)
-    with socket.socket(socket.AF_INET6 if ":" in host else socket.AF_INET,
-                       socket.SOCK_DGRAM) as sock:
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    with socket.socket(family, socket.SOCK_DGRAM) as sock:
         sock.settimeout(3)
         sock.sendto(payload, (host, port))
 
 
-class EmergencyDashboard:
+class DemoConsole:
+    """Tkinter orchestration layer; all subprocess and socket work is off-thread."""
+
     def __init__(self, root):
         self.root = root
-        self.root.title("Emergency Notification Dashboard")
-        self.root.minsize(620, 430)
-        self.results = queue.Queue()
-        self.sending = False
+        self.root.title("Emergency Notification Network - Demo Console")
+        self.root.minsize(980, 680)
+        self.events = queue.Queue()
+        self.processes = {}
+        self.closing = False
 
         try:
-            default_host, default_port = load_defaults()
+            host, port = load_defaults()
         except RuntimeError as exc:
-            default_host, default_port = "127.0.0.1", 9999
+            host, port = "127.0.0.1", 9999
             self.startup_error = str(exc)
         else:
             self.startup_error = None
 
-        self.host = tk.StringVar(value=default_host)
-        self.port = tk.StringVar(value=str(default_port))
+        self.host = tk.StringVar(value=host)
+        self.port = tk.StringVar(value=str(port))
         self.priority = tk.StringVar(value=protocol.PRIO_HIGH)
+        self.message = tk.StringVar(value="FIRE IN BLOCK A")
+        self.condition = tk.StringVar(value="baseline")
+        self.count = tk.StringVar(value="20")
+        self.drop_every = tk.StringVar(value="0")
         self.status = tk.StringVar(value="Ready")
         self._build()
-        self.root.after(100, self._poll_results)
+        self.root.after(100, self._poll_events)
+        self.root.protocol("WM_DELETE_WINDOW", self._close)
         if self.startup_error:
-            self._log(f"Configuration warning: {self.startup_error}")
+            self._log("ERROR", self.startup_error)
 
     def _build(self):
-        frame = ttk.Frame(self.root, padding=16)
-        frame.pack(fill=tk.BOTH, expand=True)
-        frame.columnconfigure(1, weight=1)
-        frame.rowconfigure(4, weight=1)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        self.demo_tab = ttk.Frame(self.notebook, padding=10)
+        self.d2_tab = ttk.Frame(self.notebook, padding=10)
+        self.explain_tab = ttk.Frame(self.notebook, padding=10)
+        self.notebook.add(self.demo_tab, text="Live Demo")
+        self.notebook.add(self.d2_tab, text="D2 Controls")
+        self.notebook.add(self.explain_tab, text="What is happening?")
+        self._build_demo_tab()
+        self._build_d2_tab()
+        self._build_explain_tab()
 
-        ttk.Label(frame, text="Emergency Alert Dashboard",
-                  font=("TkDefaultFont", 16, "bold")).grid(
-                      row=0, column=0, columnspan=3, sticky="w", pady=(0, 14))
-        ttk.Label(frame, text="Server address").grid(row=1, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.host).grid(
-            row=1, column=1, columnspan=2, sticky="ew", padx=(10, 0))
-        ttk.Label(frame, text="UDP port").grid(row=2, column=0, sticky="w")
-        ttk.Entry(frame, textvariable=self.port, width=12).grid(
-            row=2, column=1, sticky="w", padx=(10, 0))
-        ttk.Label(frame, text="Priority").grid(row=3, column=0, sticky="w")
-        ttk.Combobox(frame, textvariable=self.priority,
-                     values=(protocol.PRIO_HIGH, protocol.PRIO_NORMAL, protocol.PRIO_LOW),
-                     state="readonly", width=12).grid(
-                         row=3, column=1, sticky="w", padx=(10, 0))
+        bottom = ttk.Frame(self.root, padding=(8, 0, 8, 8))
+        bottom.pack(fill=tk.X)
+        ttk.Label(bottom, textvariable=self.status).pack(side=tk.LEFT)
+        ttk.Button(bottom, text="Clear output", command=self._clear_output).pack(side=tk.RIGHT)
+        self.output = tk.Text(self.root, height=10, state=tk.DISABLED, wrap=tk.WORD)
+        self.output.pack(fill=tk.BOTH, expand=False, padx=8, pady=(0, 8))
 
-        ttk.Label(frame, text="Alert message").grid(
-            row=4, column=0, sticky="nw", pady=(12, 0))
-        self.message = tk.Text(frame, height=5, wrap=tk.WORD)
-        self.message.grid(row=4, column=1, columnspan=2, sticky="nsew",
-                          padx=(10, 0), pady=(12, 0))
-        self.message.bind("<Control-Return>", lambda _event: self._send())
+    def _build_demo_tab(self):
+        tab = self.demo_tab
+        tab.columnconfigure(1, weight=1)
+        tab.rowconfigure(8, weight=1)
+        ttk.Label(tab, text="Local application demo",
+                  font=("TkDefaultFont", 15, "bold")).grid(
+                      row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        ttk.Label(tab, text="This tab starts the real UDP server and subscribers locally.").grid(
+            row=1, column=0, columnspan=3, sticky="w")
+        self._entry(tab, 2, "Server address", self.host)
+        self._entry(tab, 3, "UDP port", self.port)
+        self._entry(tab, 4, "Alert message", self.message)
+        ttk.Label(tab, text="Priority").grid(row=5, column=0, sticky="w")
+        ttk.Combobox(tab, textvariable=self.priority,
+                     values=tuple(protocol.VALID_PRIORITIES),
+                     state="readonly", width=12).grid(row=5, column=1, sticky="w")
 
-        self.send_button = ttk.Button(frame, text="Send emergency alert",
-                                      command=self._send)
-        self.send_button.grid(row=5, column=1, sticky="w", pady=12, padx=(10, 0))
-        ttk.Label(frame, textvariable=self.status).grid(
-            row=5, column=2, sticky="e", pady=12)
+        controls = ttk.LabelFrame(tab, text="Application controls", padding=8)
+        controls.grid(row=6, column=0, columnspan=3, sticky="ew", pady=12)
+        for column in range(4):
+            controls.columnconfigure(column, weight=1)
+        self._button(controls, "Start server", self._start_server, 0)
+        self._button(controls, "Start C1-C3", self._start_clients, 1)
+        self._button(controls, "Send alert", self._send, 2)
+        self._button(controls, "Stop all", self._stop_all, 3)
 
-        ttk.Label(frame, text="Activity log").grid(
-            row=6, column=0, sticky="nw")
-        self.log = tk.Text(frame, height=8, state=tk.DISABLED, wrap=tk.WORD)
-        self.log.grid(row=6, column=1, columnspan=2, sticky="nsew",
-                      padx=(10, 0))
-        frame.rowconfigure(6, weight=1)
+        scenarios = ttk.LabelFrame(tab, text="One-click scenarios", padding=8)
+        scenarios.grid(row=7, column=0, columnspan=3, sticky="ew")
+        self._button(scenarios, "Run local demo", self._run_local_demo, 0)
+        self._button(scenarios, "Test retransmission", self._run_retransmission, 1)
+        self._button(scenarios, "Show server/client logs", self._show_processes, 2)
+
+    def _build_d2_tab(self):
+        tab = self.d2_tab
+        tab.columnconfigure(1, weight=1)
+        ttk.Label(tab, text="D2 controls",
+                  font=("TkDefaultFont", 15, "bold")).grid(
+                      row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
+        ttk.Label(tab, text="These buttons run the real experiment utilities or prepare Mininet commands.").grid(
+            row=1, column=0, columnspan=3, sticky="w")
+        self._entry(tab, 2, "Condition", self.condition)
+        self._entry(tab, 3, "Samples", self.count)
+        self._entry(tab, 4, "Drop every N (0=none)", self.drop_every)
+        controls = ttk.LabelFrame(tab, text="Measurement pipeline", padding=8)
+        controls.grid(row=5, column=0, columnspan=3, sticky="ew", pady=12)
+        self._button(controls, "Collect CSV", self._collect_results, 0)
+        self._button(controls, "Generate graph", self._generate_graph, 1)
+        self._button(controls, "Run both conditions", self._run_both_conditions, 2)
+
+        sdn = ttk.LabelFrame(tab, text="SDN / Mininet actions", padding=8)
+        sdn.grid(row=6, column=0, columnspan=3, sticky="ew")
+        self._button(sdn, "Configure QoS queue", self._setup_qos, 0)
+        self._button(sdn, "Link s1-s2 down", lambda: self._show_mininet_command("link s1 s2 down"), 1)
+        self._button(sdn, "Link s1-s2 up", lambda: self._show_mininet_command("link s1 s2 up"), 2)
+        self._button(sdn, "Show flow command", self._show_flow_command, 3)
+        ttk.Label(tab, text=(
+            "The SDN buttons require Ubuntu/WSL with Mininet and OVS. "
+            "On Windows they report the missing environment instead of freezing."
+        ), wraplength=800).grid(row=7, column=0, columnspan=3, sticky="w", pady=12)
+
+    def _build_explain_tab(self):
+        text = (
+            "LIVE DEMO\n"
+            "Start server -> start C1-C3 -> send alert. The server broadcasts a "
+            "numbered UDP ALERT and clients return ACK messages.\n\n"
+            "RETRANSMISSION\n"
+            "Stop one client after registration and send an alert. The server "
+            "waits 300 ms, retransmits up to 3 times, then reports failure.\n\n"
+            "D2 CONGESTION\n"
+            "Background traffic fills a link. Ryu polls OpenFlow counters and "
+            "logs CONGESTION_ON/OFF around the configured threshold.\n\n"
+            "D2 QOS\n"
+            "UDP destination port 9999 identifies emergency traffic. OVS queue "
+            "1 is assigned through set_queue:1.\n\n"
+            "D2 REROUTING\n"
+            "After s1-s2 fails, Ryu clears learned flows. The redundant path "
+            "s1-s3-s4 is learned by subsequent packets.\n\n"
+            "MEASUREMENTS\n"
+            "CSV collection records latency and delivery. The graph compares "
+            "conditions. The local script validates the pipeline; Mininet/Ryu "
+            "logs are the evidence for actual SDN behavior."
+        )
+        ttk.Label(self.explain_tab, text="Feature explanations",
+                  font=("TkDefaultFont", 15, "bold")).pack(anchor="w", pady=(0, 12))
+        box = tk.Text(self.explain_tab, wrap=tk.WORD, height=25)
+        box.pack(fill=tk.BOTH, expand=True)
+        box.insert("1.0", text)
+        box.configure(state=tk.DISABLED)
+
+    def _entry(self, parent, row, label, variable):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="w", pady=3)
+        ttk.Entry(parent, textvariable=variable).grid(
+            row=row, column=1, columnspan=2, sticky="ew", padx=(12, 0), pady=3)
+
+    def _button(self, parent, label, command, column):
+        ttk.Button(parent, text=label, command=command).grid(
+            row=0, column=column, sticky="ew", padx=4, pady=3)
+
+    def _start_server(self):
+        if "server" in self.processes:
+            self._log("INFO", "Server is already running")
+            return
+        self._start_process("server", [sys.executable, "server/server.py"])
+
+    def _start_clients(self):
+        for subscriber in ("C1", "C2", "C3"):
+            if subscriber not in self.processes:
+                self._start_process(
+                    subscriber,
+                    [sys.executable, "client/client.py", "--id", subscriber,
+                     "--server", self.host.get(), "--port", self.port.get()],
+                )
+
+    def _run_local_demo(self):
+        self._start_server()
+        self.root.after(1200, self._start_clients)
+        self.root.after(3000, self._send)
+
+    def _run_retransmission(self):
+        self._log("INFO", "Starting subscribers; stop one client before sending the test alert")
+        self._start_server()
+        self._start_clients()
+        self._log("INFO", "Use 'Stop all' only after observing ACK/retry output")
 
     def _send(self):
-        if self.sending:
+        if self.priority.get() not in protocol.VALID_PRIORITIES:
+            self._error("Select a valid priority.")
             return
         try:
             host, port, message = validate_destination(
-                self.host.get(), self.port.get(), self.message.get("1.0", tk.END))
-            priority = self.priority.get()
-            if priority not in protocol.VALID_PRIORITIES:
-                raise ValueError("Select a valid priority.")
-        except (ValueError, tk.TclError) as exc:
-            messagebox.showerror("Invalid alert", str(exc), parent=self.root)
-            self.status.set("Input error")
+                self.host.get(), self.port.get(), self.message.get())
+        except ValueError as exc:
+            self._error(str(exc))
             return
-
-        self.sending = True
-        self.send_button.configure(state=tk.DISABLED)
-        self.status.set("Sending...")
         threading.Thread(
-            target=self._send_worker,
-            args=(host, port, message, priority),
+            target=self._send_worker, args=(host, port, message, self.priority.get()),
             daemon=True,
         ).start()
 
@@ -164,34 +263,142 @@ class EmergencyDashboard:
         try:
             send_alert(host, port, message, priority)
         except (OSError, ValueError, protocol.ProtocolError) as exc:
-            self.results.put(("error", f"Alert failed: {exc}"))
+            self.events.put(("ERROR", f"Alert failed: {exc}"))
         else:
-            self.results.put(("success", f"Alert sent to {host}:{port} ({priority})"))
+            self.events.put(("INFO", f"Alert sent to {host}:{port} ({priority})"))
 
-    def _poll_results(self):
+    def _start_process(self, name, command):
+        try:
+            process = subprocess.Popen(
+                command, cwd=ROOT, stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1,
+            )
+        except (OSError, ValueError) as exc:
+            self._error(f"Could not start {name}: {exc}")
+            return
+        self.processes[name] = process
+        threading.Thread(target=self._read_process, args=(name, process), daemon=True).start()
+        self._log("INFO", f"Started {name}")
+
+    def _read_process(self, name, process):
+        try:
+            for line in process.stdout:
+                self.events.put(("LOG", f"[{name}] {line.rstrip()}"))
+        except (OSError, ValueError) as exc:
+            self.events.put(("ERROR", f"{name} log reader failed: {exc}"))
+        finally:
+            code = process.poll()
+            self.events.put(("INFO", f"{name} stopped (exit={code})"))
+            self.events.put(("PROCESS_DONE", name))
+
+    def _stop_all(self):
+        for name, process in list(self.processes.items()):
+            if process.poll() is None:
+                process.terminate()
+                self._log("INFO", f"Stopping {name}")
+        self.processes.clear()
+
+    def _show_processes(self):
+        if not self.processes:
+            self._log("INFO", "No local processes are running")
+            return
+        for name, process in self.processes.items():
+            self._log("INFO", f"{name}: pid={process.pid}, running={process.poll() is None}")
+
+    def _collect_results(self):
+        command = [
+            sys.executable, "experiments/collect_results.py",
+            "--condition", self.condition.get(),
+            "--count", self.count.get(),
+            "--drop-every", self.drop_every.get(),
+            "--output", f"results/raw/d2_{self.condition.get()}.csv",
+        ]
+        self._run_command(command)
+
+    def _run_both_conditions(self):
+        self.condition.set("baseline")
+        self.drop_every.set("0")
+        self._collect_results()
+        self.condition.set("proposed")
+        self.drop_every.set("5")
+        self.root.after(100, self._collect_results)
+
+    def _generate_graph(self):
+        self._run_command([
+            sys.executable, "experiments/generate_graphs.py",
+            "--input", "results/raw/d2_baseline.csv", "results/raw/d2_proposed.csv",
+        ])
+
+    def _setup_qos(self):
+        self._run_command([sys.executable, "experiments/setup_qos.py"])
+
+    def _show_flow_command(self):
+        self._log("COMMAND", "mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13")
+        self._log("INFO", "Look for udp,tp_dst=9999 and set_queue:1")
+
+    def _show_mininet_command(self, command):
+        self._log("COMMAND", f"mininet> {command}")
+        self._log("INFO", "Run this command in the active Mininet CLI.")
+
+    def _run_command(self, command):
+        if isinstance(command, str):
+            command = command.split()
+        threading.Thread(target=self._command_worker, args=(command,), daemon=True).start()
+
+    def _command_worker(self, command):
+        try:
+            result = subprocess.run(
+                command, cwd=ROOT, capture_output=True, text=True, timeout=120,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            self.events.put(("ERROR", f"Command failed to start: {exc}"))
+            return
+        output = (result.stdout + result.stderr).strip()
+        if output:
+            for line in output.splitlines():
+                self.events.put(("LOG", f"[command] {line}"))
+        self.events.put(("INFO", f"Command exited with code {result.returncode}"))
+
+    def _poll_events(self):
         try:
             while True:
-                kind, text = self.results.get_nowait()
-                self.sending = False
-                self.send_button.configure(state=tk.NORMAL)
-                self.status.set("Sent" if kind == "success" else "Failed")
-                self._log(text)
-                if kind == "error":
-                    messagebox.showerror("Send failed", text, parent=self.root)
+                kind, text = self.events.get_nowait()
+                if kind == "PROCESS_DONE":
+                    self.processes.pop(text, None)
+                    continue
+                self._log(kind, text)
+                self.status.set(text)
         except queue.Empty:
             pass
-        self.root.after(100, self._poll_results)
+        if not self.closing:
+            self.root.after(100, self._poll_events)
 
-    def _log(self, text):
-        self.log.configure(state=tk.NORMAL)
-        self.log.insert(tk.END, text + "\n")
-        self.log.see(tk.END)
-        self.log.configure(state=tk.DISABLED)
+    def _log(self, level, text):
+        self.output.configure(state=tk.NORMAL)
+        self.output.insert(tk.END, f"[{level}] {text}\n")
+        self.output.see(tk.END)
+        self.output.configure(state=tk.DISABLED)
+
+    def _clear_output(self):
+        self.output.configure(state=tk.NORMAL)
+        self.output.delete("1.0", tk.END)
+        self.output.configure(state=tk.DISABLED)
+
+    def _error(self, text):
+        self._log("ERROR", text)
+        messagebox.showerror("Demo console", text, parent=self.root)
+
+    def _close(self):
+        self.closing = True
+        self._stop_all()
+        self.root.destroy()
 
 
 def main():
     root = tk.Tk()
-    EmergencyDashboard(root)
+    DemoConsole(root)
     root.mainloop()
 
 
