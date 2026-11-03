@@ -422,6 +422,10 @@ Mininet, start the server/subscribers inside Mininet, configure QoS, create
 background congestion, bring the `s1-s2` link down/up, inspect flows, collect
 CSV data, and generate graphs. The command console can run any additional
 Mininet command. The normal `mininet>` CLI remains available as a backup.
+When starting Mininet or configuring QoS, the GUI asks for the WSL/Ubuntu
+sudo password in a masked dialog because those operations require root
+privileges. The password is passed only to that command and is not written to
+the activity log.
 Invalid input, missing tools, socket failures, and subprocess errors are shown
 in the output panel instead of freezing the GUI.
 

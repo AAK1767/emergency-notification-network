@@ -16,7 +16,7 @@ import sys
 import threading
 import tkinter as tk
 import shutil
-from tkinter import messagebox, ttk
+from tkinter import messagebox, simpledialog, ttk
 
 from common import protocol
 
@@ -300,7 +300,10 @@ class DemoConsole:
         if shutil.which("sudo") is None:
             self._error("sudo was not found. Start Mininet manually from the CLI.")
             return
-        command = ["sudo", "-n", "python3", "topology/topo.py", "--no-tc"]
+        password = self._ask_sudo_password()
+        if password is None:
+            return
+        command = ["sudo", "-S", "-p", "", "python3", "topology/topo.py", "--no-tc"]
         try:
             self.mininet_process = subprocess.Popen(
                 command, cwd=ROOT, stdin=subprocess.PIPE,
@@ -310,10 +313,29 @@ class DemoConsole:
         except (OSError, ValueError) as exc:
             self._error(f"Could not start Mininet: {exc}")
             return
+        try:
+            self.mininet_process.stdin.write(password + "\n")
+            self.mininet_process.stdin.flush()
+        except (OSError, ValueError) as exc:
+            self.mininet_process.terminate()
+            self.mininet_process = None
+            self._error(f"Could not authenticate sudo: {exc}")
+            return
+        finally:
+            password = None
         threading.Thread(
             target=self._read_mininet, args=(self.mininet_process,), daemon=True
         ).start()
         self._log("INFO", "Mininet is starting. Wait for the mininet> prompt.")
+
+    def _ask_sudo_password(self):
+        """Ask once without logging or retaining the password."""
+        return simpledialog.askstring(
+            "Sudo authentication",
+            "Enter your WSL/Ubuntu sudo password to start Mininet or configure QoS:",
+            parent=self.root,
+            show="*",
+        )
 
     def _read_mininet(self, process):
         try:
@@ -466,7 +488,14 @@ class DemoConsole:
         ])
 
     def _setup_qos(self):
-        self._run_command(["sudo", "-n", "python3", "experiments/setup_qos.py"])
+        password = self._ask_sudo_password()
+        if password is None:
+            return
+        self._run_command(
+            ["sudo", "-S", "-p", "", "python3", "experiments/setup_qos.py"],
+            stdin_data=password,
+        )
+        password = None
 
     def _show_flow_command(self):
         self._log("COMMAND", "mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13")
@@ -476,15 +505,20 @@ class DemoConsole:
         self._log("COMMAND", f"mininet> {command}")
         self._log("INFO", "Run this command in the active Mininet CLI.")
 
-    def _run_command(self, command):
+    def _run_command(self, command, stdin_data=None):
         if isinstance(command, str):
             command = command.split()
-        threading.Thread(target=self._command_worker, args=(command,), daemon=True).start()
+        threading.Thread(
+            target=self._command_worker,
+            args=(command, stdin_data),
+            daemon=True,
+        ).start()
 
-    def _command_worker(self, command):
+    def _command_worker(self, command, stdin_data=None):
         try:
             result = subprocess.run(
-                command, cwd=ROOT, capture_output=True, text=True, timeout=120,
+                command, cwd=ROOT, input=(f"{stdin_data}\n" if stdin_data is not None else None),
+                capture_output=True, text=True, timeout=120,
                 check=False,
             )
         except (OSError, subprocess.SubprocessError) as exc:
