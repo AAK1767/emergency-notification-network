@@ -425,7 +425,9 @@ Mininet command. The normal `mininet>` CLI remains available as a backup.
 When starting Mininet or configuring QoS, the GUI asks for the WSL/Ubuntu
 sudo password in a masked dialog because those operations require root
 privileges. The password is passed only to that command and is not written to
-the activity log. Starting Mininet also runs `mn -c` first to remove stale
+the activity log. The GUI authenticates sudo before opening Mininet, so the
+password is never sent to the interactive `mininet>` prompt. Starting Mininet
+also runs `mn -c` first to remove stale
 interfaces left by an interrupted topology run.
 Invalid input, missing tools, socket failures, and subprocess errors are shown
 in the output panel instead of freezing the GUI.
@@ -442,41 +444,29 @@ path after a link failure.
 
 ## D2: Dynamic SDN demo
 
-The local experiment scripts validate the measurement and graph pipeline; the
-Mininet procedure below is the evidence for congestion and rerouting. The
-`--drop-every` option is a deterministic packet-loss test, not a claim that
-the local loopback test replaces the Mininet performance comparison.
-
-Run the lightweight, local measurement pipeline first:
-
-```bash
-python3 experiments/collect_results.py --condition baseline \
-  --output results/raw/d2_baseline.csv
-python3 experiments/collect_results.py --condition proposed --drop-every 5 \
-  --output results/raw/d2_proposed.csv
-python3 experiments/generate_graphs.py \
-  --input results/raw/d2_baseline.csv results/raw/d2_proposed.csv
-```
-
-For the Mininet D2 demonstration, start the controller and topology as
-described above. Configure queue 1 before generating traffic:
-
-```bash
-sudo python3 experiments/setup_qos.py
-```
-
-Then create background traffic and trigger a failure:
+The D2 comparison uses the actual Mininet network. Start the controller,
+topology, server, and subscribers first, then enable background congestion.
+The GUI's **Run real comparison** button performs the same workflow without
+requiring Mininet commands.
 
 ```text
 mininet> hNoise1 iperf -s &
 mininet> hServer iperf -c 10.0.0.11 -u -b 20M -t 30 &
-mininet> link s1 s2 down
-mininet> hAdmin python3 server/send_alert.py --server 10.0.0.1 --port 9999 -m "D2 TEST"
-mininet> link s1 s2 up
+mininet> hAdmin python3 experiments/collect_results.py --comparison \
+  --count 10 --output results/raw/d2_mininet.csv
+mininet> python3 experiments/generate_graphs.py \
+  --input results/raw/d2_mininet.csv
 ```
 
-Observe `CONGESTION_ON`, `CONGESTION_OFF`, and `relearning paths` in the Ryu
-log. Use `ovs-ofctl dump-flows s1 -O OpenFlow13` to show the emergency flow.
+The collector runs two configurations using the same emergency traffic:
+
+- **Baseline:** QoS disabled while congestion remains enabled.
+- **Proposed:** emergency QoS queue enabled with the same congestion.
+
+It records server ACK latency, delivery percentage, packet loss, and jitter in
+`results/raw/d2_mininet.csv`. The graph compares those four metrics. Observe
+`CONGESTION_ON`, `CONGESTION_OFF`, and `relearning paths` in the Ryu log, and
+use `ovs-ofctl dump-flows s1 -O OpenFlow13` to show the emergency flow.
 
 ## License
 

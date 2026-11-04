@@ -97,6 +97,7 @@ class EmergencyServer:
         
         if msg.msg_type == protocol.MSG_REGISTER:
             self.sub_mgr.register(sub_id, ip, port, receive_ts)
+            self.alert_mgr.update_subscriber_endpoint(sub_id, ip, port)
             self.controller.post_event("subscriber_register", {"subscriber_id": sub_id, "ip": ip, "port": port})
             
         elif msg.msg_type == protocol.MSG_UNREGISTER:

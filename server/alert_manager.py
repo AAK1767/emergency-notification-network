@@ -67,6 +67,19 @@ class AlertManager:
                     del self.pending_acks[seq]
                     logger.debug("SERVER:ALERT", f"All ACKs received for ALERT seq={seq}")
 
+    def update_subscriber_endpoint(self, sub_id, ip, port):
+        """Use a reconnected subscriber's current UDP endpoint for retries."""
+        with self.lock:
+            for pending in self.pending_acks.values():
+                info = pending.get(sub_id)
+                if info is not None:
+                    info["ip"] = ip
+                    info["port"] = port
+                    logger.info(
+                        "SERVER:ALERT",
+                        f"Updated retry endpoint for {sub_id} to {ip}:{port}",
+                    )
+
     def _retry_loop(self, seq):
         # A missing ACK causes the same sequence number to be sent again.
         timeout_s = self.ack_timeout_ms / 1000.0

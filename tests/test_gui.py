@@ -2,7 +2,7 @@
 
 import pytest
 
-from gui import validate_destination
+from gui import DemoConsole, validate_destination
 
 
 def test_gui_accepts_valid_alert():
@@ -24,3 +24,16 @@ def test_gui_rejects_invalid_alert(host, port, message):
     # Invalid form data must be stopped before a socket is opened.
     with pytest.raises(ValueError):
         validate_destination(host, port, message)
+
+
+@pytest.mark.parametrize(
+    "line,channel",
+    [
+        ("2026 [CLIENT:C1] Sent REGISTER", "Clients"),
+        ("2026 [SERVER:SUB] Subscriber C1 registered", "Application"),
+        ("2026 [CONTROLLER_CLIENT] Sent event subscriber_register", "Application"),
+        ("mininet> pingall", "Mininet"),
+    ],
+)
+def test_mininet_log_channels(line, channel):
+    assert DemoConsole._classify_mininet_log(line) == channel

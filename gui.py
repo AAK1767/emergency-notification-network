@@ -10,13 +10,14 @@ import ipaddress
 import json
 import os
 import queue
+import shlex
 import socket
 import subprocess
 import sys
 import threading
 import tkinter as tk
 import shutil
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import messagebox, ttk
 
 from common import protocol
 
@@ -74,7 +75,15 @@ class DemoConsole:
     def __init__(self, root):
         self.root = root
         self.root.title("Emergency Notification Network - Demo Console")
-        self.root.minsize(980, 680)
+        self.root.update_idletasks()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        window_width = min(1050, max(900, screen_width - 40))
+        window_height = min(900, max(650, screen_height - 90))
+        self.root.geometry(f"{window_width}x{window_height}")
+        self.root.minsize(900, 650)
+        self.root.maxsize(screen_width - 20, screen_height - 60)
+        self.root.resizable(True, True)
         self.events = queue.Queue()
         self.processes = {}
         self.mininet_process = None
@@ -94,7 +103,6 @@ class DemoConsole:
         self.message = tk.StringVar(value="FIRE IN BLOCK A")
         self.condition = tk.StringVar(value="baseline")
         self.count = tk.StringVar(value="20")
-        self.drop_every = tk.StringVar(value="0")
         self.status = tk.StringVar(value="Ready")
         self._build()
         self.root.after(100, self._poll_events)
@@ -104,7 +112,9 @@ class DemoConsole:
 
     def _build(self):
         self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        # Keep the controls visible while giving the output notebook most of
+        # the available vertical space.
+        self.notebook.pack(fill=tk.X, expand=False, padx=8, pady=8)
         self.demo_tab = ttk.Frame(self.notebook, padding=10)
         self.d2_tab = ttk.Frame(self.notebook, padding=10)
         self.explain_tab = ttk.Frame(self.notebook, padding=10)
@@ -124,7 +134,7 @@ class DemoConsole:
         self.logs = ttk.Notebook(self.root)
         self.logs.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
         self.log_widgets = {}
-        for channel in ("General", "Ryu", "Mininet", "Application", "Experiments"):
+        for channel in ("General", "Ryu", "Mininet", "Application", "Clients", "Experiments"):
             panel = ttk.Frame(self.logs, padding=4)
             panel.rowconfigure(0, weight=1)
             panel.columnconfigure(0, weight=1)
@@ -140,7 +150,7 @@ class DemoConsole:
         # Live Demo controls the real local UDP server and subscriber processes.
         tab = self.demo_tab
         tab.columnconfigure(1, weight=1)
-        tab.rowconfigure(8, weight=1)
+        tab.rowconfigure(9, weight=1)
         ttk.Label(tab, text="Local application demo",
                   font=("TkDefaultFont", 15, "bold")).grid(
                       row=0, column=0, columnspan=3, sticky="w", pady=(0, 12))
@@ -163,8 +173,24 @@ class DemoConsole:
         self._button(controls, "Send alert", self._send, 2)
         self._button(controls, "Stop all", self._stop_all, 3)
 
+        retransmission = ttk.LabelFrame(
+            tab, text="Retransmission controls", padding=8
+        )
+        retransmission.grid(row=7, column=0, columnspan=3, sticky="ew")
+        for column in range(3):
+            retransmission.columnconfigure(column, weight=1)
+        self._button(
+            retransmission, "Stop C1", lambda: self._stop_local_client("C1"), 0
+        )
+        self._button(
+            retransmission, "Stop C2", lambda: self._stop_local_client("C2"), 1
+        )
+        self._button(
+            retransmission, "Stop C3", lambda: self._stop_local_client("C3"), 2
+        )
+
         scenarios = ttk.LabelFrame(tab, text="One-click scenarios", padding=8)
-        scenarios.grid(row=7, column=0, columnspan=3, sticky="ew")
+        scenarios.grid(row=8, column=0, columnspan=3, sticky="ew")
         self._button(scenarios, "Run local demo", self._run_local_demo, 0)
         self._button(scenarios, "Test retransmission", self._run_retransmission, 1)
         self._button(scenarios, "Show server/client logs", self._show_processes, 2)
@@ -180,45 +206,69 @@ class DemoConsole:
             row=1, column=0, columnspan=3, sticky="w")
         self._entry(tab, 2, "Condition", self.condition)
         self._entry(tab, 3, "Samples", self.count)
-        self._entry(tab, 4, "Drop every N (0=none)", self.drop_every)
         controls = ttk.LabelFrame(tab, text="Measurement pipeline", padding=8)
         controls.grid(row=5, column=0, columnspan=3, sticky="ew", pady=12)
-        self._button(controls, "Collect CSV", self._collect_results, 0)
-        self._button(controls, "Generate graph", self._generate_graph, 1)
-        self._button(controls, "Run both conditions", self._run_both_conditions, 2)
+        self._button(controls, "Run selected condition", self._collect_results, 0)
+        self._button(controls, "Run real comparison", self._run_mininet_comparison, 1)
+        self._button(controls, "Generate graph", self._generate_graph, 2)
+
+        alert = ttk.LabelFrame(tab, text="D2 alert", padding=8)
+        alert.grid(row=6, column=0, columnspan=3, sticky="ew", pady=8)
+        alert.columnconfigure(1, weight=1)
+        ttk.Label(alert, text="Message").grid(row=0, column=0, sticky="w")
+        ttk.Entry(alert, textvariable=self.message).grid(
+            row=0, column=1, sticky="ew", padx=8
+        )
+        ttk.Label(alert, text="Priority").grid(row=0, column=2, sticky="w")
+        ttk.Combobox(
+            alert,
+            textvariable=self.priority,
+            values=tuple(protocol.VALID_PRIORITIES),
+            state="readonly",
+            width=10,
+        ).grid(row=0, column=3, padx=8)
+        self._button(alert, "Send D2 alert", self._send_d2_alert, 4)
 
         sdn = ttk.LabelFrame(tab, text="SDN / Mininet actions", padding=8)
-        sdn.grid(row=6, column=0, columnspan=3, sticky="ew")
-        self._button(sdn, "Configure QoS queue", self._setup_qos, 0)
-        self._button(sdn, "Link s1-s2 down", lambda: self._show_mininet_command("link s1 s2 down"), 1)
-        self._button(sdn, "Link s1-s2 up", lambda: self._show_mininet_command("link s1 s2 up"), 2)
-        self._button(sdn, "Show flow command", self._show_flow_command, 3)
+        sdn.grid(row=7, column=0, columnspan=3, sticky="ew")
+        self._button(sdn, "Show flow command", self._show_flow_command, 0)
         ttk.Label(tab, text=(
             "Use this tab as the main D2 control surface. It launches the "
             "controller/topology and sends commands to the live Mininet CLI. "
             "The normal CLI remains available as a backup."
-        ), wraplength=800).grid(row=7, column=0, columnspan=3, sticky="w", pady=12)
+        ), wraplength=800).grid(row=8, column=0, columnspan=3, sticky="w", pady=12)
 
         network = ttk.LabelFrame(tab, text="Network demo session", padding=8)
-        network.grid(row=8, column=0, columnspan=3, sticky="ew", pady=(8, 0))
-        for column in range(4):
+        network.grid(row=9, column=0, columnspan=3, sticky="ew", pady=(8, 0))
+        for column in range(5):
             network.columnconfigure(column, weight=1)
         self._button(network, "Start Ryu", self._start_ryu, 0)
         self._button(network, "Start Mininet", self._start_mininet, 1)
         self._button(network, "Start D1 services", self._start_mininet_services, 2)
         self._button(network, "Stop network", self._stop_network, 3)
+        self._button(network, "Start subscribers", self._start_subscribers, 4)
 
         actions = ttk.LabelFrame(tab, text="D2 actions", padding=8)
-        actions.grid(row=9, column=0, columnspan=3, sticky="ew")
-        for column in range(4):
+        actions.grid(row=10, column=0, columnspan=3, sticky="ew")
+        for column in range(5):
             actions.columnconfigure(column, weight=1)
         self._button(actions, "Setup QoS", self._setup_qos, 0)
         self._button(actions, "Create congestion", self._create_congestion, 1)
         self._button(actions, "Link s1-s2 down", lambda: self._send_mininet("link s1 s2 down"), 2)
         self._button(actions, "Link s1-s2 up", lambda: self._send_mininet("link s1 s2 up"), 3)
+        self._button(actions, "Refresh client logs", self._show_mininet_logs, 4)
+
+        failures = ttk.LabelFrame(tab, text="Traffic and retransmission controls", padding=8)
+        failures.grid(row=11, column=0, columnspan=3, sticky="ew")
+        for column in range(4):
+            failures.columnconfigure(column, weight=1)
+        self._button(failures, "Stop congestion", self._stop_congestion, 0)
+        self._button(failures, "Stop C1", lambda: self._stop_mininet_client("C1"), 1)
+        self._button(failures, "Stop C2", lambda: self._stop_mininet_client("C2"), 2)
+        self._button(failures, "Stop C3", lambda: self._stop_mininet_client("C3"), 3)
 
         inspect = ttk.LabelFrame(tab, text="Mininet command console", padding=8)
-        inspect.grid(row=10, column=0, columnspan=3, sticky="ew")
+        inspect.grid(row=12, column=0, columnspan=3, sticky="ew")
         inspect.columnconfigure(0, weight=1)
         self.mininet_command = tk.StringVar()
         ttk.Entry(inspect, textvariable=self.mininet_command).grid(
@@ -240,7 +290,8 @@ class DemoConsole:
             "numbered UDP ALERT and clients return ACK messages.\n\n"
             "RETRANSMISSION\n"
             "Stop one client after registration and send an alert. The server "
-            "waits 300 ms, retransmits up to 3 times, then reports failure.\n\n"
+            "waits 2 seconds between attempts, retransmits up to 5 times, "
+            "then reports failure.\n\n"
             "D2 CONGESTION\n"
             "Background traffic fills a link. Ryu polls OpenFlow counters and "
             "logs CONGESTION_ON/OFF around the configured threshold.\n\n"
@@ -286,6 +337,23 @@ class DemoConsole:
                      "--server", self.host.get(), "--port", self.port.get()],
                 )
 
+    def _stop_local_client(self, subscriber):
+        """Stop one local subscriber while keeping the server and peers alive."""
+        process = self.processes.get(subscriber)
+        if not process or process.poll() is not None:
+            self._error(f"{subscriber} is not running.")
+            return
+        try:
+            process.terminate()
+        except OSError as exc:
+            self._error(f"Could not stop {subscriber}: {exc}")
+            return
+        self._log(
+            "INFO",
+            f"{subscriber} stopped. Send an alert to observe retransmissions.",
+            "Clients",
+        )
+
     def _run_local_demo(self):
         self._start_server()
         self.root.after(1200, self._start_clients)
@@ -317,11 +385,13 @@ class DemoConsole:
         password = self._ask_sudo_password()
         if password is None:
             return
+        if not self._authenticate_sudo(password):
+            return
         # Clean stale veth pairs before starting; interrupted Mininet runs can
         # otherwise fail with "RTNETLINK answers: File exists".
         command = [
-            "sudo", "-S", "-p", "", "bash", "-lc",
-            "mn -c && exec python3 topology/topo.py --no-tc",
+            "sudo", "-n", "bash", "-lc",
+            "mn -c && exec python3 -u topology/topo.py --no-tc",
         ]
         try:
             self.mininet_process = subprocess.Popen(
@@ -332,72 +402,220 @@ class DemoConsole:
         except (OSError, ValueError) as exc:
             self._error(f"Could not start Mininet: {exc}")
             return
-        try:
-            self.mininet_process.stdin.write(password + "\n")
-            self.mininet_process.stdin.flush()
-        except (OSError, ValueError) as exc:
-            self.mininet_process.terminate()
-            self.mininet_process = None
-            self._error(f"Could not authenticate sudo: {exc}")
-            return
-        finally:
-            password = None
+        password = None
         threading.Thread(
             target=self._read_mininet, args=(self.mininet_process,), daemon=True
         ).start()
         self._log("INFO", "Cleaning stale Mininet state, then starting topology...")
 
     def _ask_sudo_password(self):
-        """Ask once without logging or retaining the password."""
-        return simpledialog.askstring(
-            "Sudo authentication",
-            "Enter your WSL/Ubuntu sudo password to start Mininet or configure QoS:",
-            parent=self.root,
-            show="*",
+        """Show a password prompt that always has explicit close controls."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Sudo authentication")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.grab_set()
+
+        result = {"password": None}
+        password = tk.StringVar()
+        ttk.Label(
+            dialog,
+            text="Enter your WSL/Ubuntu sudo password to start Mininet or configure QoS:",
+            wraplength=360,
+            justify=tk.LEFT,
+        ).grid(row=0, column=0, columnspan=2, padx=16, pady=(16, 8))
+        entry = ttk.Entry(dialog, textvariable=password, show="*", width=36)
+        entry.grid(row=1, column=0, columnspan=2, padx=16, pady=4)
+
+        def finish(accepted):
+            if accepted:
+                result["password"] = password.get()
+            dialog.grab_release()
+            dialog.destroy()
+
+        ttk.Button(dialog, text="Cancel", command=lambda: finish(False)).grid(
+            row=2, column=0, padx=(16, 4), pady=16, sticky="e"
         )
+        ttk.Button(dialog, text="OK", command=lambda: finish(True)).grid(
+            row=2, column=1, padx=(4, 16), pady=16, sticky="e"
+        )
+        dialog.bind("<Return>", lambda _event: finish(True))
+        dialog.bind("<Escape>", lambda _event: finish(False))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        entry.focus_set()
+        self.root.wait_window(dialog)
+        return result["password"]
+
+    def _authenticate_sudo(self, password):
+        """Cache sudo authentication without connecting the password to Mininet."""
+        if not password:
+            self._error("A sudo password is required to start Mininet.")
+            return False
+        try:
+            result = subprocess.run(
+                ["sudo", "-S", "-p", "", "-v"],
+                input=f"{password}\n",
+                capture_output=True,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            self._error(f"Could not run sudo authentication: {exc}")
+            return False
+        finally:
+            password = None
+        if result.returncode != 0:
+            self._error("Sudo authentication failed. Enter the WSL/Ubuntu password again.")
+            return False
+        return True
 
     def _read_mininet(self, process):
         try:
             for line in process.stdout:
-                self.events.put(("LOG", f"{line.rstrip()}", "Mininet"))
+                text = line.rstrip()
+                channel = self._classify_mininet_log(text)
+                self.events.put(("LOG", text, channel))
         except OSError as exc:
             self.events.put(("ERROR", f"Mininet output failed: {exc}", "Mininet"))
         finally:
             self.events.put(("INFO", "Mininet stopped", "Mininet"))
             self.mininet_process = None
 
-    def _send_mininet(self, command):
+    @staticmethod
+    def _classify_mininet_log(text):
+        """Route copied server/client log lines to the matching output tab."""
+        if "[CLIENT:" in text:
+            return "Clients"
+        if "[SERVER" in text or "[CONTROLLER_CLIENT]" in text:
+            return "Application"
+        return "Mininet"
+
+    def _send_mininet(self, command, channel="Mininet"):
         command = command.strip()
         if not command:
             self._error("Enter a Mininet command first.")
             return
-        process = self.mininet_process
-        if not process or process.poll() is not None or process.stdin is None:
-            self._error("Mininet is not running. Click Start Mininet first.")
+        if not self._mininet_ready():
             return
+        process = self.mininet_process
         try:
             process.stdin.write(command + "\n")
             process.stdin.flush()
-            self._log("COMMAND", f"mininet> {command}", "Mininet")
+            self._log("COMMAND", f"mininet> {command}", channel)
         except (OSError, ValueError) as exc:
             self._error(f"Could not send Mininet command: {exc}")
 
+    def _mininet_ready(self):
+        """Show one actionable error instead of one popup per queued command."""
+        process = self.mininet_process
+        if process and process.poll() is None and process.stdin is not None:
+            return True
+        self._error("Mininet is not running. Click Start Mininet first.")
+        return False
+
     def _start_mininet_services(self):
-        commands = [
-            "pingall",
-            "hServer sh -c 'python3 server/server.py > /tmp/gui-d2-server.log 2>&1' &",
-            "hC1 sh -c 'python3 client/client.py --id C1 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C1.log 2>&1' &",
-            "hC2 sh -c 'python3 client/client.py --id C2 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C2.log 2>&1' &",
-            "hC3 sh -c 'python3 client/client.py --id C3 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C3.log 2>&1' &",
-        ]
-        for command in commands:
-            self._send_mininet(command)
-        self._log("INFO", "D1 services started inside Mininet; D2 controls are ready.")
+        if not self._mininet_ready():
+            return
+        self._start_mininet_server()
+        self._log("INFO", "D1 services starting. Use the command console for pingall.")
+
+    def _start_mininet_server(self):
+        if not self._mininet_ready():
+            return
+        self._send_mininet(
+            "hServer python3 -u server/server.py > /tmp/gui-d2-server.log 2>&1 &"
+        )
+        # Give the server time to bind UDP port 9999 before clients register.
+        self.root.after(2000, self._start_subscribers)
+        self._log("INFO", "Server started; subscribers will register in 2 seconds.")
+
+    def _start_subscribers(self):
+        """Start C1-C3 so each sends REGISTER to the running server."""
+        if not self._mininet_ready():
+            return
+        self._send_mininet(
+            "hC1 python3 -u client/client.py --id C1 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C1.log 2>&1 &"
+        )
+        self.root.after(700, self._start_subscriber_c2)
+        self._log("INFO", "C1 started; starting C2 and C3 separately.")
+
+    def _start_subscriber_c2(self):
+        if not self._mininet_ready():
+            return
+        self._send_mininet(
+            "hC2 python3 -u client/client.py --id C2 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C2.log 2>&1 &"
+        )
+        self.root.after(700, self._start_subscriber_c3)
+
+    def _start_subscriber_c3(self):
+        if not self._mininet_ready():
+            return
+        self._send_mininet(
+            "hC3 python3 -u client/client.py --id C3 --server 10.0.0.1 --port 9999 > /tmp/gui-d2-C3.log 2>&1 &"
+        )
+        self._log(
+            "INFO",
+            "C1, C2, and C3 started. Wait for registration, then refresh logs.",
+        )
+
+    def _show_mininet_logs(self):
+        """Read the application logs saved inside the Mininet host namespaces."""
+        self._show_mininet_log(0)
+
+    def _show_mininet_log(self, index):
+        """Read one host log at a time so commands do not overlap in Mininet."""
+        logs = (
+            ("hServer", "/tmp/gui-d2-server.log", "Application"),
+            ("hC1", "/tmp/gui-d2-C1.log", "Clients"),
+            ("hC2", "/tmp/gui-d2-C2.log", "Clients"),
+            ("hC3", "/tmp/gui-d2-C3.log", "Clients"),
+        )
+        if index >= len(logs):
+            self._log("INFO", "Refreshed server and subscriber logs from Mininet.")
+            return
+        host, path, channel = logs[index]
+        self._send_mininet(f"{host} cat {path}", channel=channel)
+        self.root.after(800, lambda: self._show_mininet_log(index + 1))
 
     def _create_congestion(self):
         self._send_mininet("hNoise1 iperf -s &")
+        # Wait for the listener command to return to the Mininet prompt before
+        # sending the client command; otherwise the host name can be truncated.
+        self.root.after(1000, self._start_congestion_client)
+        self._log("INFO", "Starting background traffic listener...")
+
+    def _start_congestion_client(self):
+        if not self._mininet_ready():
+            return
+        # Keep this a flat Mininet host command. The normal Mininet CLI owns
+        # backgrounding, so nested shell quoting and redirection are unnecessary.
         self._send_mininet("hServer iperf -c 10.0.0.11 -u -b 20M -t 30 &")
-        self._log("INFO", "Background traffic started; watch the Ryu output for CONGESTION_ON.")
+        self._log("INFO", "Background traffic started; watch Ryu for CONGESTION_ON.")
+
+    def _stop_congestion(self):
+        """Stop only the iperf processes used to create background traffic."""
+        if not self._mininet_ready():
+            return
+        self._send_mininet("hNoise1 pkill iperf")
+        self.root.after(700, self._stop_congestion_client)
+        self._log("INFO", "Stopping background traffic...")
+
+    def _stop_congestion_client(self):
+        if self._mininet_ready():
+            self._send_mininet("hServer pkill iperf")
+            self._log("INFO", "Background congestion traffic stopped.")
+
+    def _stop_mininet_client(self, subscriber):
+        """Stop one Mininet subscriber while leaving the others running."""
+        if not self._mininet_ready():
+            return
+        # Match the unique subscriber ID, not the shared client.py path.
+        self._send_mininet(f"h{subscriber} pkill -f {subscriber}")
+        self._log(
+            "INFO",
+            f"{subscriber} stopped. Send an alert to observe retransmissions.",
+        )
 
     def _run_retransmission(self):
         self._log("INFO", "Starting subscribers; stop one client before sending the test alert")
@@ -420,6 +638,32 @@ class DemoConsole:
             daemon=True,
         ).start()
 
+    def _send_d2_alert(self):
+        """Send an alert from hAdmin to the server inside Mininet."""
+        message = self.message.get().strip()
+        if self.priority.get() not in protocol.VALID_PRIORITIES:
+            self._error("Select a valid priority.")
+            return
+        if not message:
+            self._error("Alert message cannot be empty.")
+            return
+        if len(message.encode("utf-8")) > 3500:
+            self._error("Alert message is too long (maximum 3500 bytes).")
+            return
+        if not self._mininet_ready():
+            return
+        command = (
+            "hAdmin python3 server/send_alert.py --server 10.0.0.1 "
+            "--port 9999 --priority "
+            f"{shlex.quote(self.priority.get())} --message {shlex.quote(message)}"
+        )
+        self._send_mininet(command, channel="Application")
+        self._log(
+            "INFO",
+            "D2 alert sent from hAdmin to the Mininet server.",
+            "Application",
+        )
+
     def _send_worker(self, host, port, message, priority):
         try:
             send_alert(host, port, message, priority)
@@ -440,7 +684,12 @@ class DemoConsole:
             self._error(f"Could not start {name}: {exc}")
             return
         self.processes[name] = process
-        channel = "Ryu" if name == "ryu" else "Application"
+        if name == "ryu":
+            channel = "Ryu"
+        elif name in {"C1", "C2", "C3"}:
+            channel = "Clients"
+        else:
+            channel = "Application"
         threading.Thread(
             target=self._read_process, args=(name, process, channel), daemon=True
         ).start()
@@ -486,38 +735,62 @@ class DemoConsole:
             self._log("INFO", f"{name}: pid={process.pid}, running={process.poll() is None}")
 
     def _collect_results(self):
-        command = [
-            sys.executable, "experiments/collect_results.py",
-            "--condition", self.condition.get(),
-            "--count", self.count.get(),
-            "--drop-every", self.drop_every.get(),
-            "--output", f"results/raw/d2_{self.condition.get()}.csv",
-        ]
-        self._run_command(command)
+        if not self._mininet_ready():
+            return
+        command = (
+            "hAdmin python3 experiments/collect_results.py "
+            f"--condition {self.condition.get()} --count {self.count.get()} "
+            "--output results/raw/d2_mininet.csv"
+        )
+        self._send_mininet(command, channel="Experiments")
+        self._log(
+            "INFO",
+            "Collecting real Mininet measurements. Keep congestion running.",
+            "Experiments",
+        )
 
     def _run_both_conditions(self):
-        self.condition.set("baseline")
-        self.drop_every.set("0")
-        self._collect_results()
-        self.condition.set("proposed")
-        self.drop_every.set("5")
-        self.root.after(100, self._collect_results)
+        self._run_mininet_comparison()
+
+    def _run_mininet_comparison(self):
+        if not self._mininet_ready():
+            return
+        self._create_congestion()
+        self.root.after(2500, self._send_mininet_comparison)
+        self._log(
+            "INFO",
+            "Congestion started. Baseline QoS-off and proposed QoS-on will run next.",
+            "Experiments",
+        )
+
+    def _send_mininet_comparison(self):
+        if not self._mininet_ready():
+            return
+        command = (
+            "hAdmin python3 experiments/collect_results.py --comparison "
+            f"--count {self.count.get()} --output results/raw/d2_mininet.csv"
+        )
+        self._send_mininet(command, channel="Experiments")
+        self._log(
+            "INFO",
+            "Running identical emergency traffic for baseline and proposed configurations.",
+            "Experiments",
+        )
 
     def _generate_graph(self):
         self._run_command([
             sys.executable, "experiments/generate_graphs.py",
-            "--input", "results/raw/d2_baseline.csv", "results/raw/d2_proposed.csv",
+            "--input", "results/raw/d2_mininet.csv",
         ])
 
     def _setup_qos(self):
         password = self._ask_sudo_password()
         if password is None:
             return
-        self._run_command(
-            ["sudo", "-S", "-p", "", "python3", "experiments/setup_qos.py"],
-            stdin_data=password,
-        )
+        if not self._authenticate_sudo(password):
+            return
         password = None
+        self._run_command(["sudo", "-n", "python3", "experiments/setup_qos.py"])
 
     def _show_flow_command(self):
         self._log("COMMAND", "mininet> sh ovs-ofctl dump-flows s1 -O OpenFlow13")
@@ -571,9 +844,11 @@ class DemoConsole:
 
     def _log(self, level, text, channel="General"):
         widget = self.log_widgets.get(channel, self.log_widgets["General"])
+        follow_output = not widget.yview() or widget.yview()[1] >= 0.999
         widget.configure(state=tk.NORMAL)
         widget.insert(tk.END, f"[{level}] {text}\n")
-        widget.see(tk.END)
+        if follow_output:
+            widget.see(tk.END)
         widget.configure(state=tk.DISABLED)
 
     def _clear_output(self):

@@ -107,16 +107,17 @@ class EmergencyController(app_manager.RyuApp):
         match = parser.OFPMatch()
         self._add_flow(dp, 0, match, [parser.OFPActionOutput(ofp.OFPP_NORMAL)])
 
-        match_em = parser.OFPMatch(
-            eth_type=0x0800, ip_proto=17, udp_dst=self.emergency_port
-        )
         actions_em = [
             parser.OFPActionSetQueue(self.em_queue),
             parser.OFPActionOutput(ofp.OFPP_CONTROLLER, ofp.OFPCML_NO_BUFFER),
         ]
-        self._add_flow(dp, 100, match_em, actions_em)
+        for field in ("udp_dst", "udp_src"):
+            match_em = parser.OFPMatch(
+                eth_type=0x0800, ip_proto=17, **{field: self.emergency_port}
+            )
+            self._add_flow(dp, 100, match_em, actions_em)
         LOG.info(
-            "[SDN] Emergency flow installed on s%s (udp_dst=%d, queue=%d)",
+            "[SDN] Emergency flows installed on s%s (udp src/dst=%d, queue=%d)",
             dp.id, self.emergency_port, self.em_queue,
         )
 
@@ -156,16 +157,25 @@ class EmergencyController(app_manager.RyuApp):
             # Check if this is emergency traffic
             ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
             udp_pkt = pkt.get_protocol(udp.udp)
-            is_emergency = (ipv4_pkt and udp_pkt and udp_pkt.dst_port == self.emergency_port)
+            emergency_by_destination = (
+                ipv4_pkt and udp_pkt and udp_pkt.dst_port == self.emergency_port
+            )
+            emergency_by_source = (
+                ipv4_pkt and udp_pkt and udp_pkt.src_port == self.emergency_port
+            )
+            is_emergency = emergency_by_destination or emergency_by_source
 
             if is_emergency:
+                port_field = (
+                    "udp_dst" if emergency_by_destination else "udp_src"
+                )
                 match = parser.OFPMatch(
                     in_port=in_port,
                     eth_dst=dst,
                     eth_src=src,
                     eth_type=0x0800,
                     ip_proto=17,
-                    udp_dst=self.emergency_port,
+                    **{port_field: self.emergency_port},
                 )
                 actions = [
                     parser.OFPActionSetQueue(self.em_queue),

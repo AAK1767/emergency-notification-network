@@ -13,8 +13,8 @@
     "delimiter": "|",
     "emergency_port": 9999,
     "normal_port": 8888,
-    "ack_timeout_ms": 300,
-    "max_retries": 3,
+    "ack_timeout_ms": 2000,
+    "max_retries": 5,
     "heartbeat_interval_s": 5,
     "heartbeat_timeout_s": 15
   },

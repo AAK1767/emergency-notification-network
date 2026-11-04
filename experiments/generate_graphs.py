@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a latency/loss summary graph from collect_results.py output."""
+"""Plot real Mininet latency, delivery, loss, and jitter measurements."""
 
 import argparse
 from pathlib import Path
@@ -9,28 +9,37 @@ import pandas as pd
 
 
 def main():
-    # Combine conditions first so the same graph can compare baseline/proposed.
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", nargs="+", default=["results/raw/d2_results.csv"])
+    parser.add_argument("--input", nargs="+", default=["results/raw/d2_mininet.csv"])
     parser.add_argument("--output", default="results/graphs/d2_summary.png")
     args = parser.parse_args()
 
-    data = pd.concat((pd.read_csv(path) for path in args.input), ignore_index=True)
-    summary = data.groupby("condition").agg(
-        latency_ms=("latency_ms", "mean"),
-        delivery_percent=("delivered", lambda values: values.mean() * 100),
+    data = pd.concat(
+        (pd.read_csv(path) for path in args.input), ignore_index=True
     )
+    summary = data.groupby("condition").agg(
+        average_latency_ms=("latency_ms", "mean"),
+        delivery_percent=("delivery_percent", "mean"),
+        packet_loss_percent=("packet_loss_percent", "mean"),
+        jitter_ms=("jitter_ms", "mean"),
+    )
+    axes = summary.plot.bar(
+        subplots=True,
+        layout=(2, 2),
+        figsize=(10, 7),
+        legend=False,
+        title=[
+            "Average alert delivery latency (ms)",
+            "Packet delivery (%)",
+            "Packet loss (%)",
+            "Jitter (ms)",
+        ],
+        ylabel="Value",
+    )
+    axes[0, 0].figure.tight_layout()
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    axes = summary.plot.bar(
-        # Two subplots keep latency and delivery percentage easy to read.
-        y=["latency_ms", "delivery_percent"],
-        subplots=True,
-        legend=False,
-        title=["Mean latency (ms)", "Delivery rate (%)"],
-    )
-    axes[0].figure.tight_layout()
-    axes[0].figure.savefig(output, dpi=150)
+    axes[0, 0].figure.savefig(output, dpi=150)
     print(f"Wrote graph to {output}")
 
 
