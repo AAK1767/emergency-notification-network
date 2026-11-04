@@ -6,7 +6,7 @@ Build a **UDP-based emergency notification system** deployed on **Mininet** and 
 
 The system must:
 
-- Register multiple emergency-notification subscribers.
+- Register multiple emergency-notification subscribers..
 - Send urgent alert messages to all currently registered subscribers.
 - Require delivery confirmation through ACKs.
 - Retransmit alerts when an expected ACK is not received.
